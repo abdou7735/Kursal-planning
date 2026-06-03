@@ -365,6 +365,10 @@ function ManagerView({ employees, shifts, notifications, unavailability, workedH
               <span>{item.label}</span>
             </button>
           ))}
+          <button style={{...S.navBtn,marginTop:12,borderTop:"1px solid rgba(255,255,255,.15)",paddingTop:16,color:"#ffcdd2"}}
+            onClick={()=>{setMenuOpen(false);onLogout();}}>
+            <span style={{fontSize:18}}>↩</span> <span>Déconnexion</span>
+          </button>
         </nav>
         <button style={S.logoutBtn} onClick={onLogout}>↩ Déconnexion</button>
       </aside>
@@ -375,37 +379,15 @@ function ManagerView({ employees, shifts, notifications, unavailability, workedH
         {tab==="planning" && (<>
           <div style={S.pageHeader}>
             <h2 style={S.pageTitle}>Planning de la semaine</h2>
-            <button style={S.btnPrimary} onClick={()=>setShowAddShift(true)}>+ Ajouter un service</button>
+            <button style={S.btnPrimary} onClick={()=>setShowAddShift(true)}>+ Ajouter</button>
           </div>
           <div style={S.weekNav}>
-            <button style={S.weekBtn} onClick={()=>setWeek(o=>o-1)}>‹ Préc.</button>
+            <button style={S.weekBtn} onClick={()=>setWeek(o=>o-1)}>‹</button>
             <span style={S.weekLabel}>{formatDate(weekDays[0])} – {formatDate(weekDays[6])}</span>
-            <button style={S.weekBtn} onClick={()=>setWeek(o=>o+1)}>Suiv. ›</button>
+            <button style={S.weekBtn} onClick={()=>setWeek(o=>o+1)}>›</button>
           </div>
-          <div style={S.planGrid}>
-            {weekDays.map((day,i)=>{
-              const dayShifts = shifts.filter(s=>s.date===day);
-              return (
-                <div key={day} style={S.dayCol}>
-                  <div style={S.dayHeader}>
-                    <span style={S.dayName}>{JOURS[i]}</span>
-                    <span style={S.dayDate}>{formatDate(day)}</span>
-                  </div>
-                  <div style={S.dayShifts}>
-                    {dayShifts.length===0 && <p style={S.noShift}>—</p>}
-                    {dayShifts.map(s=>(
-                      <div key={s.id} style={{...S.shiftCard,background:posteColor(s.poste)}}>
-                        <div style={S.shiftName}>{empName(s.employeeId)}</div>
-                        <div style={S.shiftTime}>{s.debut}{s.fin?`–${s.fin}`:""}</div>
-                        <div style={S.shiftPoste}>{s.poste}</div>
-                        <button style={S.shiftDel} onClick={()=>onRemoveShift(s.id)}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Carousel jours */}
+          <DayCarousel weekDays={weekDays} shifts={shifts} empName={empName} onRemoveShift={onRemoveShift} />
           {showAddShift && (
             <Modal title="Nouveau service" onClose={()=>setShowAddShift(false)}>
               <label style={S.label}>Employé</label>
@@ -724,31 +706,7 @@ function EmployeeView({ employee, shifts, allShifts, employees, notifications,
             <span style={S.weekLabel}>{formatDate(weekDays[0])} – {formatDate(weekDays[6])}</span>
             <button style={S.weekBtn} onClick={()=>setWeek(o=>o+1)}>›</button>
           </div>
-          <div style={S.planGrid}>
-            {weekDays.map((day,i)=>{
-              const dayShifts=allShifts.filter(s=>s.date===day);
-              return (
-                <div key={day} style={S.dayCol}>
-                  <div style={S.dayHeader}><span style={S.dayName}>{JOURS[i]}</span><span style={S.dayDate}>{formatDate(day)}</span></div>
-                  <div style={S.dayShifts}>
-                    {dayShifts.length===0&&<p style={S.noShift}>—</p>}
-                    {dayShifts.map(s=>{
-                      const isMine=s.employeeId===employee.id;
-                      const emp=employees.find(e=>e.id===s.employeeId);
-                      return (
-                        <div key={s.id} style={{...S.shiftCard,background:posteColor(s.poste),border:isMine?"2px solid #1976d2":"none"}}>
-                          {isMine&&<span style={S.myTag}>Moi</span>}
-                          <div style={S.shiftName}>{emp?.prenom} {emp?.nom[0]}.</div>
-                          <div style={S.shiftTime}>{s.debut}{s.fin?`–${s.fin}`:""}</div>
-                          <div style={S.shiftPoste}>{s.poste}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <DayCarousel weekDays={weekDays} shifts={allShifts} empName={id=>{const e=employees.find(x=>x.id===id);return e?`${e.prenom} ${e.nom[0]}.`:"?";}} myId={employee.id} />
         </>)}
 
         {/* ── MES HEURES ── */}
@@ -838,6 +796,61 @@ function EmployeeView({ employee, shifts, allShifts, employees, notifications,
           }
         </>)}
       </main>
+    </div>
+  );
+}
+
+// ── Carousel jours ───────────────────────────────────────────────────
+function DayCarousel({ weekDays, shifts, empName, onRemoveShift, myId }) {
+  const [dayIndex, setDayIndex] = useState(() => {
+    const today = new Date().toISOString().split("T")[0];
+    const idx = weekDays.findIndex(d => d === today);
+    return idx >= 0 ? idx : 0;
+  });
+
+  const day = weekDays[dayIndex];
+  const dayShifts = shifts.filter(s => s.date === day);
+  const jourNoms = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+
+  return (
+    <div>
+      {/* Selector jours */}
+      <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
+        {weekDays.map((d,i)=>(
+          <button key={d} onClick={()=>setDayIndex(i)} style={{
+            flexShrink:0, padding:"8px 12px", borderRadius:12, border:"none", cursor:"pointer",
+            background: dayIndex===i ? "#1a237e" : "#fff",
+            color: dayIndex===i ? "#fff" : "#555",
+            fontWeight: dayIndex===i ? 700 : 400,
+            fontSize:13,
+            boxShadow: dayIndex===i ? "0 2px 8px rgba(26,35,126,.3)" : "0 1px 4px rgba(0,0,0,.08)"
+          }}>
+            <div>{JOURS[i]}</div>
+            <div style={{fontSize:11,opacity:.8}}>{formatDate(d)}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Carte du jour sélectionné */}
+      <div style={{background:"#fff",borderRadius:16,padding:"16px",boxShadow:"0 2px 12px rgba(0,0,0,.08)",minHeight:140}}>
+        <div style={{fontWeight:800,fontSize:16,color:"#1a237e",marginBottom:12}}>
+          {jourNoms[dayIndex]} {formatDate(day)}
+        </div>
+        {dayShifts.length===0
+          ? <div style={{color:"#ccc",textAlign:"center",padding:"24px 0",fontSize:14}}>Aucun service ce jour</div>
+          : dayShifts.map(s=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:12,marginBottom:8,background:posteColor(s.poste),position:"relative",border:myId&&s.employeeId===myId?"2px solid #1976d2":"none"}}>
+              <div style={{fontSize:22}}>{posteEmoji(s.poste)}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,color:"#222"}}>{empName(s.employeeId)}</div>
+                <div style={{fontSize:12,color:"#666"}}>{s.debut}{s.fin?`–${s.fin}`:""} · {s.poste}</div>
+              </div>
+              {myId&&s.employeeId===myId&&<span style={{...{display:"inline-block",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#1976d2",color:"#fff"}}>Moi</span>}
+              {onRemoveShift&&<button style={{background:"rgba(0,0,0,.08)",border:"none",borderRadius:6,cursor:"pointer",fontSize:11,color:"#555",padding:"3px 7px"}} onClick={()=>onRemoveShift(s.id)}>✕</button>}
+            </div>
+          ))
+        }
+      </div>
     </div>
   );
 }
