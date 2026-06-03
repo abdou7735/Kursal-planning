@@ -317,20 +317,52 @@ function ManagerView({ employees, shifts, notifications, unavailability, workedH
   const totalHoursForEmp = (empId) =>
     workedHoursCol.filter(w=>w.empId===empId).reduce((s,w)=>s+(parseFloat(w.heures)||0),0);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navItems = [
+    {id:"planning", icon:"📅", label:"Planning"},
+    {id:"employees",icon:"👥", label:"Équipe"},
+    {id:"overview", icon:"📊", label:"Vue d'ensemble"},
+    {id:"notifs",   icon:"🔔", label:`Alertes (${notifications.length})`},
+    {id:"settings", icon:"⚙️",  label:"Paramètres"},
+  ];
+
   return (
     <div style={S.appWrap}>
-      <aside style={S.sidebar}>
-        <div style={S.sideHead}><span style={{fontSize:22}}>🍽</span><span style={S.sideTitle}>Kursal de Panne</span></div>
+      {/* Overlay mobile */}
+      {menuOpen && <div style={S.menuOverlay} onClick={()=>setMenuOpen(false)} />}
+
+      {/* Barre mobile en haut */}
+      <div style={S.topBar}>
+        <button style={S.hamburger} onClick={()=>setMenuOpen(o=>!o)}>
+          {menuOpen ? "✕" : "☰"}
+        </button>
+        <span style={{fontSize:18}}>🍽</span>
+        <span style={S.topBarTitle}>Kursal de Panne</span>
+        <div style={{display:"flex",gap:6,marginLeft:"auto"}}>
+          {navItems.map(item=>(
+            <button key={item.id} title={item.label}
+              style={{...S.topNavBtn,...(tab===item.id?S.topNavBtnActive:{})}}
+              onClick={()=>setTab(item.id)}>
+              {item.icon}{item.id==="notifs"&&notifications.length>0&&
+                <span style={S.notifDot}>{notifications.length}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sidebar desktop + drawer mobile */}
+      <aside style={{...S.sidebar,...(menuOpen?S.sidebarOpen:{})}}>
+        <div style={S.sideHead}>
+          <span style={{fontSize:22}}>🍽</span>
+          <span style={S.sideTitle}>Kursal de Panne</span>
+          <button style={{...S.hamburger,marginLeft:"auto",color:"#fff"}} onClick={()=>setMenuOpen(false)}>✕</button>
+        </div>
         <nav style={S.nav}>
-          {[
-            {id:"planning", icon:"📅", label:"Planning"},
-            {id:"employees",icon:"👥", label:"Équipe"},
-            {id:"overview", icon:"📊", label:"Vue d'ensemble"},
-            {id:"notifs",   icon:"🔔", label:`Alertes (${notifications.length})`},
-            {id:"settings", icon:"⚙️",  label:"Paramètres"},
-          ].map(item=>(
-            <button key={item.id} style={{...S.navBtn,...(tab===item.id?S.navBtnActive:{})}} onClick={()=>setTab(item.id)}>
-              <span>{item.icon}</span> {item.label}
+          {navItems.map(item=>(
+            <button key={item.id} style={{...S.navBtn,...(tab===item.id?S.navBtnActive:{})}}
+              onClick={()=>{setTab(item.id);setMenuOpen(false);}}>
+              <span style={{fontSize:18}}>{item.icon}</span>
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
@@ -606,23 +638,50 @@ function EmployeeView({ employee, shifts, allShifts, employees, notifications,
     setEditingHours(null); setSaving(false);
   };
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navItems = [
+    {id:"planning", icon:"📅", label:"Mon planning"},
+    {id:"heures",   icon:"⏱️",  label:"Mes heures"},
+    {id:"indispo",  icon:"🚫", label:"Indisponibilités"},
+  ];
+
   return (
     <div style={S.appWrap}>
-      <aside style={S.sidebar}>
-        <div style={S.sideHead}><span style={{fontSize:22}}>🍽</span><span style={S.sideTitle}>Kursal de Panne</span></div>
+      {menuOpen && <div style={S.menuOverlay} onClick={()=>setMenuOpen(false)} />}
+
+      {/* Barre mobile */}
+      <div style={S.topBar}>
+        <button style={S.hamburger} onClick={()=>setMenuOpen(o=>!o)}>{menuOpen?"✕":"☰"}</button>
+        <div style={{...S.empAvatar,width:32,height:32,fontSize:13,background:posteColor(employee.poste),flexShrink:0}}>{employee.prenom[0]}{employee.nom[0]}</div>
+        <span style={S.topBarTitle}>{employee.prenom}</span>
+        <div style={{display:"flex",gap:6,marginLeft:"auto"}}>
+          {navItems.map(item=>(
+            <button key={item.id} title={item.label}
+              style={{...S.topNavBtn,...(tab===item.id?S.topNavBtnActive:{})}}
+              onClick={()=>setTab(item.id)}>
+              {item.icon}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sidebar */}
+      <aside style={{...S.sidebar,...(menuOpen?S.sidebarOpen:{})}}>
+        <div style={S.sideHead}>
+          <span style={{fontSize:22}}>🍽</span>
+          <span style={S.sideTitle}>Kursal de Panne</span>
+          <button style={{...S.hamburger,marginLeft:"auto",color:"#fff"}} onClick={()=>setMenuOpen(false)}>✕</button>
+        </div>
         <div style={S.empProfileBox}>
           <div style={{...S.empAvatar,margin:"0 auto 8px",width:50,height:50,fontSize:18,background:posteColor(employee.poste)}}>{employee.prenom[0]}{employee.nom[0]}</div>
           <div style={{fontWeight:700,color:"#fff",fontSize:14}}>{employee.prenom} {employee.nom}</div>
           <div style={{fontSize:11,color:"rgba(255,255,255,.6)",marginTop:2}}>{employee.poste} · {employee.type==="fixe"?"Fixe":"Étudiant"}</div>
         </div>
         <nav style={S.nav}>
-          {[
-            {id:"planning", icon:"📅", label:"Mon planning"},
-            {id:"heures",   icon:"⏱️",  label:"Mes heures"},
-            {id:"indispo",  icon:"🚫", label:"Indisponibilités"},
-          ].map(item=>(
-            <button key={item.id} style={{...S.navBtn,...(tab===item.id?S.navBtnActive:{})}} onClick={()=>setTab(item.id)}>
-              <span>{item.icon}</span> {item.label}
+          {navItems.map(item=>(
+            <button key={item.id} style={{...S.navBtn,...(tab===item.id?S.navBtnActive:{})}}
+              onClick={()=>{setTab(item.id);setMenuOpen(false);}}>
+              <span style={{fontSize:18}}>{item.icon}</span> <span>{item.label}</span>
             </button>
           ))}
         </nav>
@@ -843,16 +902,24 @@ const S = {
   btnPrimary:{background:"#1a237e",color:"#fff",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:700,cursor:"pointer",fontSize:14},
   btnGhost:{background:"transparent",color:"#888",border:"1.5px solid #ddd",borderRadius:10,padding:"10px 20px",cursor:"pointer",fontSize:13,marginTop:-4},
   errTxt:{color:"#e53935",fontSize:13,margin:"2px 0"},
-  appWrap:{display:"flex",minHeight:"100vh",fontFamily:"'Segoe UI',sans-serif",background:"#f8f9fb"},
-  sidebar:{width:220,background:"#1a237e",color:"#fff",display:"flex",flexDirection:"column",padding:"24px 0",flexShrink:0},
-  sideHead:{display:"flex",alignItems:"center",gap:10,padding:"0 20px 24px",borderBottom:"1px solid rgba(255,255,255,.15)"},
+  appWrap:{display:"flex",minHeight:"100vh",fontFamily:"'Segoe UI',sans-serif",background:"#f8f9fb",flexDirection:"column"},
+  topBar:{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",background:"#1a237e",color:"#fff",position:"sticky",top:0,zIndex:200,flexShrink:0},
+  topBarTitle:{fontWeight:700,fontSize:15,color:"#fff",letterSpacing:-0.3},
+  hamburger:{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer",padding:"2px 6px",lineHeight:1},
+  topNavBtn:{background:"rgba(255,255,255,.12)",border:"none",borderRadius:8,padding:"6px 8px",fontSize:18,cursor:"pointer",position:"relative"},
+  topNavBtnActive:{background:"rgba(255,255,255,.3)"},
+  notifDot:{position:"absolute",top:-4,right:-4,background:"#ff5252",color:"#fff",borderRadius:"50%",fontSize:9,width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700},
+  menuOverlay:{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:299},
+  sidebar:{position:"fixed",top:0,left:"-280px",width:260,height:"100vh",background:"#1a237e",color:"#fff",display:"flex",flexDirection:"column",padding:"0",flexShrink:0,zIndex:300,transition:"left .25s ease",overflowY:"auto"},
+  sidebarOpen:{left:0},
+  sideHead:{display:"flex",alignItems:"center",gap:10,padding:"16px 20px 16px",borderBottom:"1px solid rgba(255,255,255,.15)"},
   sideTitle:{fontWeight:800,fontSize:15,letterSpacing:-0.5},
   empProfileBox:{padding:"16px 20px 20px",borderBottom:"1px solid rgba(255,255,255,.15)",textAlign:"center"},
   nav:{flex:1,padding:"16px 12px",display:"flex",flexDirection:"column",gap:6},
   navBtn:{background:"transparent",border:"none",color:"rgba(255,255,255,.75)",borderRadius:10,padding:"10px 14px",textAlign:"left",cursor:"pointer",fontSize:14,display:"flex",gap:10,alignItems:"center"},
   navBtnActive:{background:"rgba(255,255,255,.18)",color:"#fff",fontWeight:700},
   logoutBtn:{margin:"0 12px",background:"rgba(255,255,255,.1)",border:"none",color:"rgba(255,255,255,.7)",borderRadius:10,padding:"10px",cursor:"pointer",fontSize:13},
-  main:{flex:1,padding:"28px 32px",overflowY:"auto"},
+  main:{flex:1,padding:"20px 16px",overflowY:"auto"},
   pageHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20},
   pageTitle:{margin:0,fontSize:22,fontWeight:800,color:"#1a1a1a"},
   sectionTitle:{fontSize:15,fontWeight:700,color:"#555",margin:"0 0 10px",textTransform:"uppercase",letterSpacing:0.5},
