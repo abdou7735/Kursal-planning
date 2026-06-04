@@ -307,6 +307,8 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
   const [pwdForm,setPwdForm]=useState({ancien:"",nouveau:"",confirm:""});
   const [pwdMsg,setPwdMsg]=useState(null);
   const [saving,setSaving]=useState(false);
+  const [indispoModal,setIndispoModal]=useState(null); // employee object
+  const [indispoFin,setIndispoFin]=useState("");
 
   const navItems=[
     {id:"planning",icon:"📅",label:"Planning"},
@@ -383,17 +385,47 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
                     <span style={{...S.badge,background:posteColor(emp.poste)}}>{emp.poste}</span>
                     <span style={{...S.badge,background:emp.type==="fixe"?"#dcedc8":"#fce4ec"}}>{emp.type==="fixe"?"Fixe":"Étudiant"}</span>
                     <span style={{...S.badge,background:"#e3f2fd"}}>{up.length} service{up.length!==1?"s":""} à venir</span>
+                    <span style={{...S.badge,background:"#f3e5f5"}}>
+                      {(()=>{ const now=new Date(); const y=now.getFullYear(); const m=String(now.getMonth()+1).padStart(2,"0"); return shifts.filter(s=>s.employeeId===emp.id&&s.date.startsWith(`${y}-${m}`)).length; })()} ce mois
+                    </span>
+                    {emp.indispo&&<span style={{...S.badge,background:"#ffcdd2",color:"#c62828"}}>🚫 Indisponible{emp.indispoFin?` jusqu'au ${formatDate(emp.indispoFin)}`:""}</span>}
                   </div>
                 </div>
                 <div style={S.empActions}>
                   <button style={S.btnEdit} onClick={()=>setEditEmp({...emp})}>✏️</button>
                   <button style={S.btnDel} onClick={()=>handleDelEmp(emp.id)}>🗑️</button>
+                  <button style={{...S.btnEdit,background:emp.indispo?"#ffcdd2":"#f5f5f5",fontSize:11,padding:"5px 7px"}} onClick={()=>setIndispoModal(emp)} title="Gérer indisponibilité">🚫</button>
                 </div>
               </div>);
             })}
           </div>
           {showAddEmp&&<Modal title="Nouvel employé" onClose={()=>setShowAddEmp(false)}><EmpForm data={newEmp} setData={setNewEmp}/><button style={{...S.btnPrimary,width:"100%",marginTop:12,opacity:saving?.6:1}} onClick={handleAddEmp} disabled={saving}>{saving?"Enregistrement…":"Ajouter"}</button></Modal>}
           {editEmp&&<Modal title="Modifier l'employé" onClose={()=>setEditEmp(null)}><EmpForm data={editEmp} setData={setEditEmp}/><button style={{...S.btnPrimary,width:"100%",marginTop:12,opacity:saving?.6:1}} onClick={handleSaveEmp} disabled={saving}>{saving?"Enregistrement…":"Enregistrer"}</button></Modal>}
+          {indispoModal&&(
+            <Modal title={`Indisponibilité — ${indispoModal.prenom} ${indispoModal.nom}`} onClose={()=>{setIndispoModal(null);setIndispoFin("");}}>
+              {indispoModal.indispo?(
+                <>
+                  <div style={{background:"#ffcdd2",borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,fontWeight:600,color:"#c62828"}}>
+                    🚫 Actuellement indisponible{indispoModal.indispoFin?` jusqu'au ${formatDate(indispoModal.indispoFin)}`:" (sans date de fin)"}
+                  </div>
+                  <button style={{...S.btnPrimary,width:"100%",background:"#43a047"}} onClick={async()=>{ setSaving(true); await onUpdateEmployee({...indispoModal,indispo:false,indispoFin:""}); setIndispoModal(null); setIndispoFin(""); setSaving(false); }}>
+                    ✅ Remettre disponible
+                  </button>
+                </>
+              ):(
+                <>
+                  <div style={{background:"#f5f5f5",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#555"}}>
+                    ✅ Cet employé est actuellement disponible.
+                  </div>
+                  <label style={S.label}>Date de fin d'indisponibilité <span style={{color:"#aaa",fontWeight:400}}>(optionnel)</span></label>
+                  <input style={{...S.input,marginBottom:14}} type="date" value={indispoFin} min={getTodayPlus(0)} onChange={e=>setIndispoFin(e.target.value)}/>
+                  <button style={{...S.btnPrimary,width:"100%",background:"#e53935"}} onClick={async()=>{ setSaving(true); await onUpdateEmployee({...indispoModal,indispo:true,indispoFin:indispoFin||""}); setIndispoModal(null); setIndispoFin(""); setSaving(false); }}>
+                    🚫 Mettre indisponible
+                  </button>
+                </>
+              )}
+            </Modal>
+          )}
         </>)}
 
         {/* VUE D'ENSEMBLE */}
