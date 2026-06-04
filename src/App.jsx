@@ -307,7 +307,8 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
   const [pwdForm,setPwdForm]=useState({ancien:"",nouveau:"",confirm:""});
   const [pwdMsg,setPwdMsg]=useState(null);
   const [saving,setSaving]=useState(false);
-  const [indispoModal,setIndispoModal]=useState(null); // employee object
+  const [indispoModal,setIndispoModal]=useState(null);
+  const [indispoDebut,setIndispoDebut]=useState("");
   const [indispoFin,setIndispoFin]=useState("");
 
   const navItems=[
@@ -372,9 +373,9 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
         {tab==="employees"&&(<>
           <div style={S.pageHeader}><h2 style={S.pageTitle}>Équipe ({employees.length})</h2><button style={S.btnPrimary} onClick={()=>setShowAddEmp(true)}>+ Ajouter</button></div>
           <div style={S.empGrid}>
-            {employees.map(emp=>{
+            {[...employees].sort((a,b)=>(a.indispo?1:0)-(b.indispo?1:0)).map(emp=>{
               const up=shifts.filter(s=>s.employeeId===emp.id&&s.date>=getTodayPlus(0));
-              return (<div key={emp.id} style={S.empCard}>
+              return (<div key={emp.id} style={{...S.empCard,opacity:emp.indispo?.6:1,borderLeft:emp.indispo?"4px solid #e53935":"none"}}>
                 <div style={{...S.empAvatar,background:posteColor(emp.poste)}}>{emp.prenom[0]}{emp.nom[0]}</div>
                 <div style={S.empInfo}>
                   <div style={S.empName}>{emp.prenom} {emp.nom}</div>
@@ -388,7 +389,7 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
                     <span style={{...S.badge,background:"#f3e5f5"}}>
                       {(()=>{ const now=new Date(); const y=now.getFullYear(); const m=String(now.getMonth()+1).padStart(2,"0"); return shifts.filter(s=>s.employeeId===emp.id&&s.date.startsWith(`${y}-${m}`)).length; })()} ce mois
                     </span>
-                    {emp.indispo&&<span style={{...S.badge,background:"#ffcdd2",color:"#c62828"}}>🚫 Indisponible{emp.indispoFin?` jusqu'au ${formatDate(emp.indispoFin)}`:""}</span>}
+                    {emp.indispo&&<span style={{...S.badge,background:"#ffcdd2",color:"#c62828"}}>🚫 Indispo{emp.indispoDebut?` dès ${formatDate(emp.indispoDebut)}`:""}{emp.indispoFin?` → ${formatDate(emp.indispoFin)}`:""}</span>}
                   </div>
                 </div>
                 <div style={S.empActions}>
@@ -402,13 +403,14 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
           {showAddEmp&&<Modal title="Nouvel employé" onClose={()=>setShowAddEmp(false)}><EmpForm data={newEmp} setData={setNewEmp}/><button style={{...S.btnPrimary,width:"100%",marginTop:12,opacity:saving?.6:1}} onClick={handleAddEmp} disabled={saving}>{saving?"Enregistrement…":"Ajouter"}</button></Modal>}
           {editEmp&&<Modal title="Modifier l'employé" onClose={()=>setEditEmp(null)}><EmpForm data={editEmp} setData={setEditEmp}/><button style={{...S.btnPrimary,width:"100%",marginTop:12,opacity:saving?.6:1}} onClick={handleSaveEmp} disabled={saving}>{saving?"Enregistrement…":"Enregistrer"}</button></Modal>}
           {indispoModal&&(
-            <Modal title={`Indisponibilité — ${indispoModal.prenom} ${indispoModal.nom}`} onClose={()=>{setIndispoModal(null);setIndispoFin("");}}>
+            <Modal title={`Indisponibilité — ${indispoModal.prenom} ${indispoModal.nom}`} onClose={()=>{setIndispoModal(null);setIndispoDebut("");setIndispoFin("");}}>
               {indispoModal.indispo?(
                 <>
                   <div style={{background:"#ffcdd2",borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,fontWeight:600,color:"#c62828"}}>
-                    🚫 Actuellement indisponible{indispoModal.indispoFin?` jusqu'au ${formatDate(indispoModal.indispoFin)}`:" (sans date de fin)"}
+                    🚫 Indisponible{indispoModal.indispoDebut?` depuis le ${formatDate(indispoModal.indispoDebut)}`:""}
+                    {indispoModal.indispoFin?` jusqu'au ${formatDate(indispoModal.indispoFin)}`:" (sans date de fin)"}
                   </div>
-                  <button style={{...S.btnPrimary,width:"100%",background:"#43a047"}} onClick={async()=>{ setSaving(true); await onUpdateEmployee({...indispoModal,indispo:false,indispoFin:""}); setIndispoModal(null); setIndispoFin(""); setSaving(false); }}>
+                  <button style={{...S.btnPrimary,width:"100%",background:"#43a047"}} onClick={async()=>{ setSaving(true); await onUpdateEmployee({...indispoModal,indispo:false,indispoDebut:"",indispoFin:""}); setIndispoModal(null); setIndispoDebut(""); setIndispoFin(""); setSaving(false); }}>
                     ✅ Remettre disponible
                   </button>
                 </>
@@ -417,9 +419,11 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
                   <div style={{background:"#f5f5f5",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#555"}}>
                     ✅ Cet employé est actuellement disponible.
                   </div>
-                  <label style={S.label}>Date de fin d'indisponibilité <span style={{color:"#aaa",fontWeight:400}}>(optionnel)</span></label>
-                  <input style={{...S.input,marginBottom:14}} type="date" value={indispoFin} min={getTodayPlus(0)} onChange={e=>setIndispoFin(e.target.value)}/>
-                  <button style={{...S.btnPrimary,width:"100%",background:"#e53935"}} onClick={async()=>{ setSaving(true); await onUpdateEmployee({...indispoModal,indispo:true,indispoFin:indispoFin||""}); setIndispoModal(null); setIndispoFin(""); setSaving(false); }}>
+                  <label style={S.label}>Date de début</label>
+                  <input style={{...S.input,marginBottom:8}} type="date" value={indispoDebut} onChange={e=>setIndispoDebut(e.target.value)}/>
+                  <label style={S.label}>Date de fin <span style={{color:"#aaa",fontWeight:400}}>(optionnel)</span></label>
+                  <input style={{...S.input,marginBottom:14}} type="date" value={indispoFin} min={indispoDebut||getTodayPlus(0)} onChange={e=>setIndispoFin(e.target.value)}/>
+                  <button style={{...S.btnPrimary,width:"100%",background:"#e53935"}} onClick={async()=>{ setSaving(true); await onUpdateEmployee({...indispoModal,indispo:true,indispoDebut:indispoDebut||getTodayPlus(0),indispoFin:indispoFin||""}); setIndispoModal(null); setIndispoDebut(""); setIndispoFin(""); setSaving(false); }}>
                     🚫 Mettre indisponible
                   </button>
                 </>
