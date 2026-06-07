@@ -198,20 +198,36 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
   const empName=id=>{ const e=employees.find(x=>x.id===id); return e?`${e.prenom} ${e.nom[0]}.`:"?"; };
 
   const isUnavailableOn = (empId, dateStr) => {
+    // 1. Vérifier indispo posée par le manager sur la fiche employé
     const emp = employees.find(e=>e.id===empId);
-    if (!emp?.indispo) return false;
-    const debut = emp.indispoDebut || getTodayPlus(0);
-    const fin = emp.indispoFin;
-    if (dateStr < debut) return false;
-    if (fin && dateStr > fin) return false;
-    return true;
+    if (emp?.indispo) {
+      const debut = emp.indispoDebut || getTodayPlus(0);
+      const fin = emp.indispoFin;
+      if (dateStr >= debut && (!fin || dateStr <= fin)) return true;
+    }
+    // 2. Vérifier indisponibilités déclarées par l'employé (acceptées ou en attente)
+    const empUnavail = unavailability.filter(u => u.empId === empId);
+    if (empUnavail.some(u => dateStr >= u.dateDebut && dateStr <= u.dateFin && u.status !== "refused")) return true;
+    return false;
   };
 
   // Employés indisponibles sur au moins 1 jour de la période affichée
   const visibleDays = days.filter(Boolean);
   const indispoInView = (viewMode==="1week"||viewMode==="2week") ? employees.filter(emp=>
-    emp.indispo && visibleDays.some(d=>isUnavailableOn(emp.id,d))
+    visibleDays.some(d=>isUnavailableOn(emp.id,d))
   ) : [];
+
+  // Détail indispo pour affichage panel
+  const getIndispoDetail = (empId) => {
+    const emp = employees.find(e=>e.id===empId);
+    const details = [];
+    if (emp?.indispo) {
+      details.push(`Dès le ${emp.indispoDebut?formatFullDate(emp.indispoDebut):"maintenant"}${emp.indispoFin?` → ${formatFullDate(emp.indispoFin)}`:" (sans fin)"}`);
+    }
+    const empUnavail = unavailability.filter(u=>u.empId===empId&&u.status!=="refused"&&visibleDays.some(d=>d>=u.dateDebut&&d<=u.dateFin));
+    empUnavail.forEach(u=>details.push(`${formatFullDate(u.dateDebut)}${u.dateFin!==u.dateDebut?` → ${formatFullDate(u.dateFin)}`:""}`));
+    return details;
+  };
 
   return (
     <div>
@@ -262,19 +278,19 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
       {indispoInView.length>0&&(
         <div style={{marginTop:16,background:"#fff",borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 10px rgba(0,0,0,.08)"}}>
           <div style={{fontWeight:800,fontSize:13,color:"#c62828",marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>🚫 Indisponibles cette période</div>
-          {indispoInView.map(emp=>(
-            <div key={emp.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,marginBottom:6,background:"#fff5f5",border:"1px solid #ffcdd2"}}>
-              <div style={{width:34,height:34,borderRadius:"50%",background:"#ffcdd2",color:"#c62828",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,flexShrink:0}}>{emp.prenom[0]}{emp.nom[0]}</div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#333"}}>{emp.prenom} {emp.nom}</div>
-                <div style={{fontSize:11,color:"#888"}}>
-                  {emp.indispoDebut?`Dès le ${formatFullDate(emp.indispoDebut)}`:"Indisponible"}
-                  {emp.indispoFin?` → ${formatFullDate(emp.indispoFin)}`:" (sans date de fin)"}
+          {indispoInView.map(emp=>{
+            const details = getIndispoDetail(emp.id);
+            return (
+              <div key={emp.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 10px",borderRadius:10,marginBottom:6,background:"#fff5f5",border:"1px solid #ffcdd2"}}>
+                <div style={{width:34,height:34,borderRadius:"50%",background:"#ffcdd2",color:"#c62828",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,flexShrink:0}}>{emp.prenom[0]}{emp.nom[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#333"}}>{emp.prenom} {emp.nom}</div>
+                  {details.map((d,i)=><div key={i} style={{fontSize:11,color:"#888",marginTop:2}}>📅 {d}</div>)}
                 </div>
+                <span style={{background:"#ffcdd2",color:"#c62828",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,flexShrink:0}}>Indispo</span>
               </div>
-              <span style={{background:"#ffcdd2",color:"#c62828",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>Indispo</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
