@@ -144,19 +144,18 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
     if(viewMode==="month"){
       const y=anchor.getFullYear(), m=anchor.getMonth();
       const first=new Date(y,m,1);
-      const startDow=(first.getDay()+6)%7; // lundi=0
+      // getDay(): 0=dim,1=lun…6=sam → convertir en lundi=0
+      const startDow=(first.getDay()===0)?6:(first.getDay()-1);
       const daysInMonth=new Date(y,m+1,0).getDate();
       const days=[];
-      for(let i=0;i<startDow;i++) days.push(null); // cases vides avant le 1er
+      for(let i=0;i<startDow;i++) days.push(null);
       for(let i=1;i<=daysInMonth;i++) days.push(toDateStr(new Date(y,m,i)));
-      // NE PAS compléter avec des nulls à la fin pour éviter des lignes vides inutiles
       while(days.length%7!==0) days.push(null);
       return days;
     }
     const weeks=viewMode==="2week"?2:1;
-    // Partir du lundi de la semaine de anchor (ou du 1er du mois si vue initiale)
     const mon=new Date(anchor);
-    const dow=(mon.getDay()+6)%7;
+    const dow=(mon.getDay()===0)?6:(mon.getDay()-1);
     mon.setDate(mon.getDate()-dow);
     const days=[];
     for(let i=0;i<weeks*7;i++){ const d=new Date(mon); d.setDate(mon.getDate()+i); days.push(toDateStr(d)); }
@@ -689,7 +688,7 @@ function IndispoCalendar({unavailability,shifts,onAddUnavail,onRemoveUnavail,sav
   const todayStr = toDateStr(today);
 
   const y=anchor.getFullYear(), m=anchor.getMonth();
-  const firstDow=(new Date(y,m,1).getDay()+6)%7;
+  const firstDow=(new Date(y,m,1).getDay()===0)?6:(new Date(y,m,1).getDay()-1);
   const daysInMonth=new Date(y,m+1,0).getDate();
   const days=[];
   for(let i=0;i<firstDow;i++) days.push(null);
