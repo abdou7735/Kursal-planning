@@ -147,12 +147,14 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
       const startDow=(first.getDay()+6)%7; // lundi=0
       const daysInMonth=new Date(y,m+1,0).getDate();
       const days=[];
-      for(let i=0;i<startDow;i++) days.push(null);
+      for(let i=0;i<startDow;i++) days.push(null); // cases vides avant le 1er
       for(let i=1;i<=daysInMonth;i++) days.push(toDateStr(new Date(y,m,i)));
+      // NE PAS compléter avec des nulls à la fin pour éviter des lignes vides inutiles
       while(days.length%7!==0) days.push(null);
       return days;
     }
-    const weeks=viewMode==="3week"?3:viewMode==="2week"?2:1;
+    const weeks=viewMode==="2week"?2:1;
+    // Partir du lundi de la semaine de anchor (ou du 1er du mois si vue initiale)
     const mon=new Date(anchor);
     const dow=(mon.getDay()+6)%7;
     mon.setDate(mon.getDate()-dow);
@@ -167,7 +169,7 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
   const navigate=(dir)=>{
     const a=new Date(anchor);
     if(viewMode==="month"){ a.setMonth(a.getMonth()+dir); }
-    else{ const w=viewMode==="3week"?3:viewMode==="2week"?2:1; a.setDate(a.getDate()+dir*w*7); }
+    else{ const w=viewMode==="2week"?2:1; a.setDate(a.getDate()+dir*w*7); }
     setAnchor(a);
   };
 
@@ -233,8 +235,12 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
     <div>
       {/* Sélecteur de vue */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {[["month","1 Mois"],["3week","3 Sem."],["2week","2 Sem."],["1week","1 Sem."]].map(([v,l])=>(
-          <button key={v} onClick={()=>{setViewMode(v);setAnchor(new Date(today.getFullYear(),today.getMonth(),1));}} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:viewMode===v?"#1a237e":"#fff",color:viewMode===v?"#fff":"#555",boxShadow:"0 1px 4px rgba(0,0,0,.1)"}}>{l}</button>
+        {[["month","1 Mois"],["2week","2 Sem."],["1week","1 Sem."]].map(([v,l])=>(
+          <button key={v} onClick={()=>{
+            setViewMode(v);
+            const t=new Date();
+            setAnchor(v==="month"?new Date(t.getFullYear(),t.getMonth(),1):t);
+          }} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:viewMode===v?"#1a237e":"#fff",color:viewMode===v?"#fff":"#555",boxShadow:"0 1px 4px rgba(0,0,0,.1)"}}>{l}</button>
         ))}
       </div>
 
@@ -662,6 +668,7 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
         {tab==="indispo"&&(
           <IndispoCalendar
             unavailability={unavailability}
+            shifts={shifts}
             onAddUnavail={onAddUnavail}
             onRemoveUnavail={onRemoveUnavail}
             saving={saving}
@@ -674,14 +681,13 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
 }
 
 // ── Calendrier indisponibilités employé ───────────────────────────────
-function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,setSaving}) {
+function IndispoCalendar({unavailability,shifts,onAddUnavail,onRemoveUnavail,saving,setSaving}) {
   const today = new Date();
   const [anchor,setAnchor] = useState(new Date(today.getFullYear(),today.getMonth(),1));
-  const [motifModal,setMotifModal] = useState(null); // dateStr en attente de motif
+  const [motifModal,setMotifModal] = useState(null);
   const [motif,setMotif] = useState("");
   const todayStr = toDateStr(today);
 
-  // Jours du mois
   const y=anchor.getFullYear(), m=anchor.getMonth();
   const firstDow=(new Date(y,m,1).getDay()+6)%7;
   const daysInMonth=new Date(y,m+1,0).getDate();
@@ -690,20 +696,20 @@ function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,set
   for(let i=1;i<=daysInMonth;i++) days.push(toDateStr(new Date(y,m,i)));
   while(days.length%7!==0) days.push(null);
 
-  // Trouver l'indispo existante pour un jour
   const getUnavailForDay = (dateStr) =>
     unavailability.find(u => dateStr >= u.dateDebut && dateStr <= u.dateFin);
+
+  const hasShiftOn = (dateStr) =>
+    shifts.some(s => s.date === dateStr);
 
   const handleDayTap = async (dateStr) => {
     if (!dateStr || dateStr < todayStr) return;
     const existing = getUnavailForDay(dateStr);
     if (existing) {
-      // Supprimer l'indispo
       setSaving(true);
       await onRemoveUnavail(existing.id);
       setSaving(false);
     } else {
-      // Ouvrir modal motif
       setMotifModal(dateStr);
       setMotif("");
     }
@@ -725,20 +731,24 @@ function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,set
   return (
     <div>
       <h2 style={S.pageTitle}>Mes indisponibilités</h2>
-      <p style={{fontSize:12,color:"#888",margin:"6px 0 14px"}}>Tap sur un jour pour le marquer 🔴 indisponible. Re-tap pour annuler.</p>
+      <p style={{fontSize:12,color:"#888",margin:"6px 0 14px"}}>Tap sur un jour pour le marquer indisponible. Re-tap pour annuler.</p>
 
       {/* Légende */}
-      <div style={{display:"flex",gap:12,marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#555"}}>
-          <div style={{width:14,height:14,borderRadius:4,background:"#e8f5e9",border:"1.5px solid #43a047"}}/>
-          Disponible
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#555"}}>
+          <div style={{width:13,height:13,borderRadius:3,background:"#e3f2fd",border:"1.5px solid #1976d2"}}/>
+          Travaille
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#555"}}>
-          <div style={{width:14,height:14,borderRadius:4,background:"#ffcdd2",border:"1.5px solid #e53935"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#555"}}>
+          <div style={{width:13,height:13,borderRadius:3,background:"#fff",border:"1.5px solid #bbb"}}/>
+          Repos
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#555"}}>
+          <div style={{width:13,height:13,borderRadius:3,background:"#ffcdd2",border:"1.5px solid #e53935"}}/>
           Indisponible
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#aaa"}}>
-          <div style={{width:14,height:14,borderRadius:4,background:"#f5f5f5",border:"1.5px solid #ddd"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#aaa"}}>
+          <div style={{width:13,height:13,borderRadius:3,background:"#f5f5f5",border:"1px solid #eee"}}/>
           Passé
         </div>
       </div>
@@ -758,30 +768,35 @@ function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,set
       {/* Grille */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
         {days.map((dateStr,i)=>{
-          if(!dateStr) return <div key={i} style={{minHeight:46}}/>;
+          if(!dateStr) return <div key={i} style={{minHeight:48}}/>;
           const isPast = dateStr < todayStr;
           const isToday = dateStr === todayStr;
           const unavail = getUnavailForDay(dateStr);
+          const works = hasShiftOn(dateStr);
           const [,,dd] = dateStr.split("-");
 
-          let bg="#fff", border="1px solid #e0e0e0", color="#333", statusIcon=null;
-          if(isPast){ bg="#f8f8f8"; border="1px solid #eee"; color="#ccc"; }
-          else if(unavail){
-            bg="#ffcdd2"; border="1.5px solid #e53935"; color="#c62828";
-            statusIcon="🔴";
+          // Couleurs selon état
+          let bg, border, color, label;
+          if(isPast){
+            bg="#f8f8f8"; border="1px solid #eee"; color="#ccc"; label=null;
+          } else if(unavail){
+            bg="#ffcdd2"; border="1.5px solid #e53935"; color="#c62828"; label="🚫";
+          } else if(works){
+            // Jour où l'employé travaille → bleu
+            bg="#e3f2fd"; border="1.5px solid #1976d2"; color="#1565c0"; label="●";
           } else {
-            bg="#f1f8e9"; border="1.5px solid #a5d6a7"; color="#2e7d32";
-            statusIcon="🟢";
+            // Repos mais disponible → blanc/gris neutre
+            bg="#fff"; border="1.5px solid #ccc"; color="#555"; label=null;
           }
-          if(isToday){ border="2px solid #1a237e"; }
+          if(isToday) border="2px solid #1a237e";
 
           return (
             <div key={dateStr} onClick={()=>!isPast&&handleDayTap(dateStr)}
-              style={{minHeight:46,borderRadius:10,padding:"4px 3px",cursor:isPast?"default":"pointer",background:bg,border,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,opacity:isPast?.5:1,transition:"transform .1s",userSelect:"none"}}>
-              <div style={{fontWeight:isToday?900:600,fontSize:13,color}}>{dd}</div>
-              {statusIcon&&!isPast&&<div style={{fontSize:9,lineHeight:1}}>{statusIcon}</div>}
+              style={{minHeight:48,borderRadius:10,padding:"4px 3px",cursor:isPast?"default":"pointer",background:bg,border,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,opacity:isPast?.45:1,userSelect:"none",transition:"opacity .1s"}}>
+              <div style={{fontWeight:isToday?900:600,fontSize:13,color,lineHeight:1}}>{dd}</div>
+              {label&&!isPast&&<div style={{fontSize:works&&!unavail?10:9,color,lineHeight:1,marginTop:1}}>{label}</div>}
               {unavail?.status&&!isPast&&(
-                <div style={{fontSize:8,color:unavail.status==="accepted"?"#2e7d32":unavail.status==="refused"?"#c62828":"#f57f17",fontWeight:700}}>
+                <div style={{fontSize:8,color:unavail.status==="accepted"?"#2e7d32":unavail.status==="refused"?"#c62828":"#f57f17",fontWeight:800}}>
                   {unavail.status==="accepted"?"✓":unavail.status==="refused"?"✗":"?"}
                 </div>
               )}
@@ -793,12 +808,12 @@ function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,set
       {/* Récap du mois */}
       {unavailability.filter(u=>u.dateDebut.startsWith(`${y}-${String(m+1).padStart(2,"0")}`)).length>0&&(
         <div style={{marginTop:16,background:"#fff",borderRadius:12,padding:"12px 14px",boxShadow:"0 1px 6px rgba(0,0,0,.07)"}}>
-          <div style={{fontWeight:700,fontSize:12,color:"#888",marginBottom:8,textTransform:"uppercase"}}>Ce mois</div>
+          <div style={{fontWeight:700,fontSize:12,color:"#888",marginBottom:8,textTransform:"uppercase"}}>Indisponibilités ce mois</div>
           {unavailability.filter(u=>u.dateDebut.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))
             .sort((a,b)=>a.dateDebut.localeCompare(b.dateDebut))
             .map(u=>(
               <div key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #f5f5f5"}}>
-                <span style={{fontSize:14}}>🔴</span>
+                <span style={{fontSize:14}}>🚫</span>
                 <div style={{flex:1}}>
                   <span style={{fontSize:12,fontWeight:600,color:"#333"}}>{formatFullDate(u.dateDebut)}</span>
                   {u.motif&&<span style={{fontSize:11,color:"#888",fontStyle:"italic"}}> · {u.motif}</span>}
@@ -815,11 +830,11 @@ function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,set
       {/* Modal motif */}
       {motifModal&&(
         <Modal title={`Indispo le ${formatFullDate(motifModal)}`} onClose={()=>setMotifModal(null)}>
-          <p style={{fontSize:13,color:"#555",margin:"0 0 10px"}}>Voulez-vous ajouter un motif ?</p>
+          <p style={{fontSize:13,color:"#555",margin:"0 0 10px"}}>Ajouter un motif ?</p>
           <label style={S.label}>Motif <span style={{color:"#aaa",fontWeight:400}}>(optionnel)</span></label>
           <input style={{...S.input,marginBottom:14}} placeholder="vacances, rdv médical…" value={motif} onChange={e=>setMotif(e.target.value)}/>
           <button style={{...S.btnPrimary,width:"100%",background:"#e53935",opacity:saving?.6:1}} onClick={handleConfirm} disabled={saving}>
-            {saving?"Enregistrement…":"🔴 Confirmer indisponible"}
+            {saving?"Enregistrement…":"🚫 Confirmer indisponible"}
           </button>
         </Modal>
       )}
