@@ -550,8 +550,6 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
   const [tab,setTab]=useState("planning");
   const [menuOpen,setMenuOpen]=useState(false);
   const [editingHours,setEditingHours]=useState(null);
-  const [newU,setNewU]=useState({dateDebut:getTodayPlus(1),dateFin:getTodayPlus(1),motif:""});
-  const [unavailMsg,setUnavailMsg]=useState(null);
   const [saving,setSaving]=useState(false);
   const totalWorked=workedHours.reduce((s,w)=>s+(parseFloat(w.heures)||0),0);
 
@@ -561,7 +559,6 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
     {id:"indispo",icon:"🚫",label:"Indisponibilités"},
   ];
 
-  const handleAddUnavail=async()=>{ if(!newU.dateDebut||!newU.dateFin)return; if(newU.dateFin<newU.dateDebut){setUnavailMsg({type:"err",text:"La fin doit être après le début."});return;} setSaving(true); await onAddUnavail(newU); setNewU({dateDebut:getTodayPlus(1),dateFin:getTodayPlus(1),motif:""}); setUnavailMsg({type:"ok",text:"Enregistrée ✅"}); setTimeout(()=>setUnavailMsg(null),3000); setSaving(false); };
   const handleSaveHours=async()=>{ if(!editingHours)return; setSaving(true); await onSaveWorkedHours(editingHours.date,editingHours.heures,editingHours.note); setEditingHours(null); setSaving(false); };
   const upcoming=shifts.filter(s=>s.date>=getTodayPlus(0)).sort((a,b)=>a.date.localeCompare(b.date));
 
@@ -646,32 +643,170 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
         </>)}
 
         {/* INDISPONIBILITÉS */}
-        {tab==="indispo"&&(<>
-          <div style={S.pageHeader}><h2 style={S.pageTitle}>Mes indisponibilités</h2></div>
-          <div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:18,boxShadow:"0 2px 10px rgba(0,0,0,.08)"}}>
-            <div style={{fontWeight:700,fontSize:14,color:"#1a237e",marginBottom:12}}>➕ Déclarer une indisponibilité</div>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-              <div style={{flex:1,minWidth:130}}><label style={S.label}>Du</label><input style={S.input} type="date" value={newU.dateDebut} min={getTodayPlus(0)} onChange={e=>{setNewU(p=>({...p,dateDebut:e.target.value}));setUnavailMsg(null);}}/></div>
-              <div style={{flex:1,minWidth:130}}><label style={S.label}>Au</label><input style={S.input} type="date" value={newU.dateFin} min={newU.dateDebut} onChange={e=>{setNewU(p=>({...p,dateFin:e.target.value}));setUnavailMsg(null);}}/></div>
-            </div>
-            <label style={{...S.label,marginTop:8,display:"block"}}>Motif <span style={{color:"#aaa",fontWeight:400}}>(opt.)</span></label>
-            <input style={{...S.input,marginBottom:12}} placeholder="vacances, rdv…" value={newU.motif} onChange={e=>setNewU(p=>({...p,motif:e.target.value}))}/>
-            {unavailMsg&&<div style={{borderRadius:8,padding:"8px 12px",marginBottom:10,fontSize:12,fontWeight:600,background:unavailMsg.type==="ok"?"#e8f5e9":"#fce4ec",color:unavailMsg.type==="ok"?"#2e7d32":"#c62828"}}>{unavailMsg.text}</div>}
-            <button style={{...S.btnPrimary,width:"100%",opacity:saving?.6:1}} onClick={handleAddUnavail} disabled={saving}>{saving?"Enregistrement…":"Enregistrer"}</button>
-          </div>
-          {unavailability.filter(u=>u.dateFin>=getTodayPlus(0)).length===0?<div style={S.emptyBox}>Aucune indisponibilité.</div>
-            :unavailability.filter(u=>u.dateFin>=getTodayPlus(0)).sort((a,b)=>a.dateDebut.localeCompare(b.dateDebut)).map(u=>{ const same=u.dateDebut===u.dateFin; return (
-              <div key={u.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 6px rgba(0,0,0,.07)",display:"flex",alignItems:"center",gap:12,borderLeft:`4px solid ${u.status==="accepted"?"#43a047":u.status==="refused"?"#e53935":"#ff9800"}`}}>
-                <span style={{fontSize:20}}>🚫</span>
-                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{same?formatFullDate(u.dateDebut):`${formatFullDate(u.dateDebut)} → ${formatFullDate(u.dateFin)}`}</div>{u.motif&&<div style={{fontSize:11,color:"#888",fontStyle:"italic"}}>💬 {u.motif}</div>}</div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5}}>
-                  <span style={{...S.badge,background:u.status==="accepted"?"#e8f5e9":u.status==="refused"?"#fce4ec":"#fff9c4",color:u.status==="accepted"?"#2e7d32":u.status==="refused"?"#c62828":"#f57f17"}}>{u.status==="accepted"?"✅ Acceptée":u.status==="refused"?"❌ Refusée":"⏳ En attente"}</span>
-                  {u.status==="pending"&&<button style={{background:"#fce4ec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11}} onClick={()=>onRemoveUnavail(u.id)}>🗑️</button>}
-                </div>
-              </div>
-            );})}
-        </>)}
+        {tab==="indispo"&&(
+          <IndispoCalendar
+            unavailability={unavailability}
+            onAddUnavail={onAddUnavail}
+            onRemoveUnavail={onRemoveUnavail}
+            saving={saving}
+            setSaving={setSaving}
+          />
+        )}
       </main>
+    </div>
+  );
+}
+
+// ── Calendrier indisponibilités employé ───────────────────────────────
+function IndispoCalendar({unavailability,onAddUnavail,onRemoveUnavail,saving,setSaving}) {
+  const today = new Date();
+  const [anchor,setAnchor] = useState(new Date(today.getFullYear(),today.getMonth(),1));
+  const [motifModal,setMotifModal] = useState(null); // dateStr en attente de motif
+  const [motif,setMotif] = useState("");
+  const todayStr = toDateStr(today);
+
+  // Jours du mois
+  const y=anchor.getFullYear(), m=anchor.getMonth();
+  const firstDow=(new Date(y,m,1).getDay()+6)%7;
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const days=[];
+  for(let i=0;i<firstDow;i++) days.push(null);
+  for(let i=1;i<=daysInMonth;i++) days.push(toDateStr(new Date(y,m,i)));
+  while(days.length%7!==0) days.push(null);
+
+  // Trouver l'indispo existante pour un jour
+  const getUnavailForDay = (dateStr) =>
+    unavailability.find(u => dateStr >= u.dateDebut && dateStr <= u.dateFin);
+
+  const handleDayTap = async (dateStr) => {
+    if (!dateStr || dateStr < todayStr) return;
+    const existing = getUnavailForDay(dateStr);
+    if (existing) {
+      // Supprimer l'indispo
+      setSaving(true);
+      await onRemoveUnavail(existing.id);
+      setSaving(false);
+    } else {
+      // Ouvrir modal motif
+      setMotifModal(dateStr);
+      setMotif("");
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!motifModal) return;
+    setSaving(true);
+    await onAddUnavail({ dateDebut: motifModal, dateFin: motifModal, motif });
+    setMotifModal(null); setMotif(""); setSaving(false);
+  };
+
+  const navigate = (dir) => {
+    const a = new Date(anchor);
+    a.setMonth(a.getMonth()+dir);
+    setAnchor(a);
+  };
+
+  return (
+    <div>
+      <h2 style={S.pageTitle}>Mes indisponibilités</h2>
+      <p style={{fontSize:12,color:"#888",margin:"6px 0 14px"}}>Tap sur un jour pour le marquer 🔴 indisponible. Re-tap pour annuler.</p>
+
+      {/* Légende */}
+      <div style={{display:"flex",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#555"}}>
+          <div style={{width:14,height:14,borderRadius:4,background:"#e8f5e9",border:"1.5px solid #43a047"}}/>
+          Disponible
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#555"}}>
+          <div style={{width:14,height:14,borderRadius:4,background:"#ffcdd2",border:"1.5px solid #e53935"}}/>
+          Indisponible
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#aaa"}}>
+          <div style={{width:14,height:14,borderRadius:4,background:"#f5f5f5",border:"1.5px solid #ddd"}}/>
+          Passé
+        </div>
+      </div>
+
+      {/* Navigation mois */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <button style={S.weekBtn} onClick={()=>navigate(-1)}>‹</button>
+        <span style={{fontWeight:800,fontSize:15,color:"#1a237e"}}>{MOIS[m]} {y}</span>
+        <button style={S.weekBtn} onClick={()=>navigate(1)}>›</button>
+      </div>
+
+      {/* En-tête jours */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+        {JOURS_SHORT.map((j,i)=><div key={i} style={{textAlign:"center",fontSize:11,fontWeight:700,color:"#888",padding:"3px 0"}}>{j}</div>)}
+      </div>
+
+      {/* Grille */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+        {days.map((dateStr,i)=>{
+          if(!dateStr) return <div key={i} style={{minHeight:46}}/>;
+          const isPast = dateStr < todayStr;
+          const isToday = dateStr === todayStr;
+          const unavail = getUnavailForDay(dateStr);
+          const [,,dd] = dateStr.split("-");
+
+          let bg="#fff", border="1px solid #e0e0e0", color="#333", statusIcon=null;
+          if(isPast){ bg="#f8f8f8"; border="1px solid #eee"; color="#ccc"; }
+          else if(unavail){
+            bg="#ffcdd2"; border="1.5px solid #e53935"; color="#c62828";
+            statusIcon="🔴";
+          } else {
+            bg="#f1f8e9"; border="1.5px solid #a5d6a7"; color="#2e7d32";
+            statusIcon="🟢";
+          }
+          if(isToday){ border="2px solid #1a237e"; }
+
+          return (
+            <div key={dateStr} onClick={()=>!isPast&&handleDayTap(dateStr)}
+              style={{minHeight:46,borderRadius:10,padding:"4px 3px",cursor:isPast?"default":"pointer",background:bg,border,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,opacity:isPast?.5:1,transition:"transform .1s",userSelect:"none"}}>
+              <div style={{fontWeight:isToday?900:600,fontSize:13,color}}>{dd}</div>
+              {statusIcon&&!isPast&&<div style={{fontSize:9,lineHeight:1}}>{statusIcon}</div>}
+              {unavail?.status&&!isPast&&(
+                <div style={{fontSize:8,color:unavail.status==="accepted"?"#2e7d32":unavail.status==="refused"?"#c62828":"#f57f17",fontWeight:700}}>
+                  {unavail.status==="accepted"?"✓":unavail.status==="refused"?"✗":"?"}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Récap du mois */}
+      {unavailability.filter(u=>u.dateDebut.startsWith(`${y}-${String(m+1).padStart(2,"0")}`)).length>0&&(
+        <div style={{marginTop:16,background:"#fff",borderRadius:12,padding:"12px 14px",boxShadow:"0 1px 6px rgba(0,0,0,.07)"}}>
+          <div style={{fontWeight:700,fontSize:12,color:"#888",marginBottom:8,textTransform:"uppercase"}}>Ce mois</div>
+          {unavailability.filter(u=>u.dateDebut.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))
+            .sort((a,b)=>a.dateDebut.localeCompare(b.dateDebut))
+            .map(u=>(
+              <div key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #f5f5f5"}}>
+                <span style={{fontSize:14}}>🔴</span>
+                <div style={{flex:1}}>
+                  <span style={{fontSize:12,fontWeight:600,color:"#333"}}>{formatFullDate(u.dateDebut)}</span>
+                  {u.motif&&<span style={{fontSize:11,color:"#888",fontStyle:"italic"}}> · {u.motif}</span>}
+                </div>
+                <span style={{...S.badge,background:u.status==="accepted"?"#e8f5e9":u.status==="refused"?"#fce4ec":"#fff9c4",color:u.status==="accepted"?"#2e7d32":u.status==="refused"?"#c62828":"#f57f17",fontSize:10}}>
+                  {u.status==="accepted"?"✅":u.status==="refused"?"❌":"⏳"}
+                </span>
+              </div>
+            ))
+          }
+        </div>
+      )}
+
+      {/* Modal motif */}
+      {motifModal&&(
+        <Modal title={`Indispo le ${formatFullDate(motifModal)}`} onClose={()=>setMotifModal(null)}>
+          <p style={{fontSize:13,color:"#555",margin:"0 0 10px"}}>Voulez-vous ajouter un motif ?</p>
+          <label style={S.label}>Motif <span style={{color:"#aaa",fontWeight:400}}>(optionnel)</span></label>
+          <input style={{...S.input,marginBottom:14}} placeholder="vacances, rdv médical…" value={motif} onChange={e=>setMotif(e.target.value)}/>
+          <button style={{...S.btnPrimary,width:"100%",background:"#e53935",opacity:saving?.6:1}} onClick={handleConfirm} disabled={saving}>
+            {saving?"Enregistrement…":"🔴 Confirmer indisponible"}
+          </button>
+        </Modal>
+      )}
     </div>
   );
 }
