@@ -132,8 +132,8 @@ function LoginPage({employees,managerPwd,onLogin}) {
 // ── Calendar Planning ────────────────────────────────────────────────
 function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,myId,unavailability=[]}) {
   const today=new Date();
-  const [viewMode,setViewMode]=useState("month"); // month|3week|2week|1week
-  const [anchor,setAnchor]=useState(new Date(today.getFullYear(),today.getMonth(),1));
+  const [viewMode,setViewMode]=useState("month");
+  const [anchor,setAnchor]=useState(()=>{ const t=new Date(); return new Date(t.getFullYear(),t.getMonth(),1); });
   const [selectedDate,setSelectedDate]=useState(null);
   const [addModal,setAddModal]=useState(null); // date string
   const [newShift,setNewShift]=useState({employeeId:"",debut:"09:00",fin:"",poste:"Salle"});
@@ -143,12 +143,19 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
   const getDays=()=>{
     if(viewMode==="month"){
       const y=anchor.getFullYear(), m=anchor.getMonth();
+      // Forcer le 1er du mois comme référence
       const first=new Date(y,m,1);
-      const startDow=(first.getDay()+6)%7; // lun=0, mar=1, ... dim=6
+      const startDow=(first.getDay()+6)%7; // lun=0 ... dim=6
       const daysInMonth=new Date(y,m+1,0).getDate();
       const days=[];
+      // Cases vides (jours semaine précédente) = null
       for(let i=0;i<startDow;i++) days.push(null);
-      for(let i=1;i<=daysInMonth;i++) days.push(toDateStr(new Date(y,m,i)));
+      // Jours du mois uniquement — jamais de jours d'un autre mois
+      for(let i=1;i<=daysInMonth;i++){
+        const d=new Date(y,m,i);
+        // Double vérification : on ne push que si le mois correspond
+        if(d.getMonth()===m) days.push(toDateStr(d));
+      }
       while(days.length%7!==0) days.push(null);
       return days;
     }
@@ -157,7 +164,11 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
     const dow=(mon.getDay()+6)%7;
     mon.setDate(mon.getDate()-dow);
     const days=[];
-    for(let i=0;i<weeks*7;i++){ const d=new Date(mon); d.setDate(mon.getDate()+i); days.push(toDateStr(d)); }
+    for(let i=0;i<weeks*7;i++){
+      const d=new Date(mon);
+      d.setDate(mon.getDate()+i);
+      days.push(toDateStr(d));
+    }
     return days;
   };
 
@@ -166,8 +177,15 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
 
   const navigate=(dir)=>{
     const a=new Date(anchor);
-    if(viewMode==="month"){ a.setMonth(a.getMonth()+dir); }
-    else{ const w=viewMode==="2week"?2:1; a.setDate(a.getDate()+dir*w*7); }
+    if(viewMode==="month"){
+      // Toujours naviguer de mois en mois en restant au 1er
+      a.setDate(1);
+      a.setMonth(a.getMonth()+dir);
+      a.setDate(1);
+    } else {
+      const w=viewMode==="2week"?2:1;
+      a.setDate(a.getDate()+dir*w*7);
+    }
     setAnchor(a);
   };
 
