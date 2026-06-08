@@ -259,8 +259,10 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
   const handleDayClick=(dateStr)=>{
     if(!dateStr) return;
     const holiday=holidays[dateStr];
-    if(holiday){ setHolidayModal({dateStr,holiday}); return; }
-    if(isManager){
+    if(holiday){
+      // Afficher les infos du jour férié ET permettre d'ajouter un service
+      setHolidayModal({dateStr,holiday});
+    } else if(isManager){
       const emp=employees[0];
       setNewShift({employeeId:emp?.id||"",debut:"09:00",fin:"",poste:emp?.poste||"Salle"});
       setAddModal(dateStr);
@@ -352,9 +354,8 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
           const [,, dd]=dateStr.split("-");
           const holiday=holidays[dateStr];
           return (
-            <div key={dateStr} onClick={()=>handleDayClick(dateStr)} style={{minHeight:56,borderRadius:10,padding:"4px 3px",cursor:"pointer",background:holiday?"#fff8e1":isSel?"#e8eaf6":isToday?"#e3f2fd":"#fff",border:isToday?"2px solid #1a237e":isSel?"2px solid #5c6bc0":holiday?"1.5px solid #ffca28":"1px solid #eee",transition:"background .15s",position:"relative"}}>
-              <div style={{textAlign:"center",fontWeight:isToday?900:500,fontSize:13,marginBottom:2,background:isToday?"#1a237e":"transparent",borderRadius:"50%",width:22,height:22,lineHeight:"22px",margin:"0 auto 2px",color:isToday?"#fff":holiday?"#f57f17":"#333"}}>{dd}</div>
-              {holiday&&<div style={{fontSize:7,textAlign:"center",color:"#f57f17",lineHeight:1,marginBottom:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>🎌</div>}
+            <div key={dateStr} onClick={()=>handleDayClick(dateStr)} style={{minHeight:56,borderRadius:10,padding:"4px 3px",cursor:"pointer",background:isSel?"#e8eaf6":isToday?"#e3f2fd":"#fff",border:isToday?"2px solid #1a237e":isSel?"2px solid #5c6bc0":holiday?"2px solid #7c4dff":"1px solid #eee",transition:"background .15s",position:"relative"}}>
+              <div style={{textAlign:"center",fontWeight:isToday?900:500,fontSize:13,marginBottom:2,background:isToday?"#1a237e":"transparent",borderRadius:"50%",width:22,height:22,lineHeight:"22px",margin:"0 auto 2px",color:isToday?"#fff":holiday?"#7c4dff":"#333"}}>{dd}</div>
               {dayShifts.slice(0,2).map(s=>(
                 <div key={s.id} style={{display:"flex",alignItems:"center",gap:2,marginBottom:1}}>
                   <div style={{width:6,height:6,borderRadius:"50%",background:isUnavailableOn(s.employeeId,dateStr)?"#ccc":posteDot(s.poste),flexShrink:0}}/>
@@ -412,28 +413,27 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
 
       {/* Modal jour férié */}
       {holidayModal&&(
-        <Modal title={`🎌 ${formatFullDate(holidayModal.dateStr)}`} onClose={()=>setHolidayModal(null)}>
+        <Modal title={`🗓 ${formatFullDate(holidayModal.dateStr)}`} onClose={()=>setHolidayModal(null)}>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {holidayModal.holiday.fr&&(
               <div style={{background:"#e8f0fe",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
                 <span style={{fontSize:28}}>🇫🇷</span>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1a237e"}}>France</div>
-                  <div style={{fontSize:14,color:"#333",marginTop:2}}>{holidayModal.holiday.fr}</div>
-                </div>
+                <div><div style={{fontWeight:700,fontSize:13,color:"#1a237e"}}>France</div><div style={{fontSize:14,color:"#333",marginTop:2}}>{holidayModal.holiday.fr}</div></div>
               </div>
             )}
             {holidayModal.holiday.be&&(
               <div style={{background:"#fff8e1",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
                 <span style={{fontSize:28}}>🇧🇪</span>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13,color:"#e65100"}}>Belgique</div>
-                  <div style={{fontSize:14,color:"#333",marginTop:2}}>{holidayModal.holiday.be}</div>
-                </div>
+                <div><div style={{fontWeight:700,fontSize:13,color:"#e65100"}}>Belgique</div><div style={{fontSize:14,color:"#333",marginTop:2}}>{holidayModal.holiday.be}</div></div>
               </div>
             )}
-            {!holidayModal.holiday.fr&&!holidayModal.holiday.be&&(
-              <div style={{textAlign:"center",color:"#888",padding:"12px 0"}}>Aucune info disponible</div>
+            {isManager&&(
+              <button style={{...S.btnPrimary,width:"100%",marginTop:4}} onClick={()=>{
+                const emp=employees[0];
+                setNewShift({employeeId:emp?.id||"",debut:"09:00",fin:"",poste:emp?.poste||"Salle"});
+                setHolidayModal(null);
+                setAddModal(holidayModal.dateStr);
+              }}>+ Ajouter un service ce jour</button>
             )}
           </div>
         </Modal>
