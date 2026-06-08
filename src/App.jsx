@@ -259,15 +259,14 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
   const handleDayClick=(dateStr)=>{
     if(!dateStr) return;
     const holiday=holidays[dateStr];
-    if(holiday){
-      // Afficher les infos du jour férié ET permettre d'ajouter un service
-      setHolidayModal({dateStr,holiday});
-    } else if(isManager){
+    if(isManager){
       const emp=employees[0];
       setNewShift({employeeId:emp?.id||"",debut:"09:00",fin:"",poste:emp?.poste||"Salle"});
       setAddModal(dateStr);
     } else {
-      setSelectedDate(selectedDate===dateStr?null:dateStr);
+      // Employé : afficher le modal jour férié ou le détail
+      if(holiday) setHolidayModal({dateStr,holiday});
+      else setSelectedDate(selectedDate===dateStr?null:dateStr);
     }
   };
 
