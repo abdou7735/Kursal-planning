@@ -71,6 +71,7 @@ export default function App() {
   const removeUnavail=async(id)=>{ await deleteDoc(doc(db,"unavailability",id)); };
   const updateUnavailStatus=async(id,status)=>{ await updateDoc(doc(db,"unavailability",id),{status}); };
   const saveWorkedHours=async(empId,date,heures,note)=>{ const id=`${empId}_${date}`; await setDoc(doc(db,"workedHours",id),{empId,date,heures,note}); };
+  const resetWorkedHours=async(id)=>{ await deleteDoc(doc(db,"workedHours",id)); };
 
   const [messages]=useCollection("messages");
   const sendMessage=async(text,fromId,fromName)=>{ const id=genId(); await setDoc(doc(db,"messages",id),{id,text,fromId,fromName,createdAt:Date.now(),readBy:[fromId]}); };
@@ -89,7 +90,7 @@ export default function App() {
   if(view==="employee") {
     const empShifts=shifts.filter(s=>s.employeeId===currentUser.id);
     const unread=messages.filter(m=>!m.readBy?.includes(currentUser.id)).length;
-    return <EmployeeView employee={currentUser} shifts={empShifts} allShifts={shifts} employees={employees} notifications={notifs.filter(s=>s.employeeId===currentUser.id)} unavailability={unavailability.filter(u=>u.empId===currentUser.id)} workedHours={workedHoursCol.filter(w=>w.empId===currentUser.id)} messages={messages} unreadCount={unread} onSendMessage={(t)=>sendMessage(t,currentUser.id,`${currentUser.prenom} ${currentUser.nom}`)} onMarkRead={(id)=>markRead(id,currentUser.id)} onAddUnavail={u=>addUnavail(currentUser.id,u)} onRemoveUnavail={removeUnavail} onSaveWorkedHours={(d,h,n)=>saveWorkedHours(currentUser.id,d,h,n)} onLogout={logout}/>;
+    return <EmployeeView employee={currentUser} shifts={empShifts} allShifts={shifts} employees={employees} notifications={notifs.filter(s=>s.employeeId===currentUser.id)} unavailability={unavailability.filter(u=>u.empId===currentUser.id)} workedHours={workedHoursCol.filter(w=>w.empId===currentUser.id)} messages={messages} unreadCount={unread} onSendMessage={(t)=>sendMessage(t,currentUser.id,`${currentUser.prenom} ${currentUser.nom}`)} onMarkRead={(id)=>markRead(id,currentUser.id)} onAddUnavail={u=>addUnavail(currentUser.id,u)} onRemoveUnavail={removeUnavail} onSaveWorkedHours={(d,h,n)=>saveWorkedHours(currentUser.id,d,h,n)} onResetHours={resetWorkedHours} onLogout={logout}/>;
   }
 }
 
@@ -703,11 +704,12 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
 }
 
 // ── Employee View ─────────────────────────────────────────────────────
-function EmployeeView({employee,shifts,allShifts,employees,notifications,unavailability,workedHours,messages,unreadCount,onSendMessage,onMarkRead,onAddUnavail,onRemoveUnavail,onSaveWorkedHours,onLogout}) {
+function EmployeeView({employee,shifts,allShifts,employees,notifications,unavailability,workedHours,messages,unreadCount,onSendMessage,onMarkRead,onAddUnavail,onRemoveUnavail,onSaveWorkedHours,onResetHours,onLogout}) {
   const [tab,setTab]=useState("planning");
   const [menuOpen,setMenuOpen]=useState(false);
   const [editingHours,setEditingHours]=useState(null);
   const [saving,setSaving]=useState(false);
+  const [selectedMonth,setSelectedMonth]=useState(()=>{ const n=new Date(); return {y:n.getFullYear(),m:n.getMonth()}; });
   const totalWorked=workedHours.reduce((s,w)=>s+(parseFloat(w.heures)||0),0);
 
   const navItems=[
@@ -780,17 +782,48 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
 
         {/* MES HEURES */}
         {tab==="heures"&&(<>
-          <div style={S.pageHeader}><h2 style={S.pageTitle}>Mes heures</h2><div style={{...S.badge,background:"#e8f5e9",fontSize:13,padding:"5px 12px"}}>Total : <strong>{totalWorked.toFixed(1)}h</strong></div></div>
-          <p style={{color:"#888",fontSize:12,marginBottom:16}}>Visible uniquement par vous.</p>
-          {shifts.filter(s=>s.date<=getTodayPlus(0)).sort((a,b)=>b.date.localeCompare(a.date)).length===0?<div style={S.emptyBox}>Aucun service passé.</div>
-            :shifts.filter(s=>s.date<=getTodayPlus(0)).sort((a,b)=>b.date.localeCompare(a.date)).map(s=>{ const rec=workedHours.find(w=>w.date===s.date); return (
-              <div key={s.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 6px rgba(0,0,0,.07)",display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:22}}>{posteEmoji(s.poste)}</span>
-                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{formatFullDate(s.date)}</div><div style={{fontSize:11,color:"#888"}}>{s.debut}{s.fin?`–${s.fin}`:""} · {s.poste}</div>{rec?.note&&<div style={{fontSize:11,color:"#666",fontStyle:"italic"}}>"{rec.note}"</div>}</div>
-                {rec?<div style={{textAlign:"right"}}><div style={{fontWeight:800,fontSize:17,color:"#1a237e"}}>{rec.heures}h</div><button style={{fontSize:10,color:"#1976d2",background:"none",border:"none",cursor:"pointer"}} onClick={()=>setEditingHours({date:s.date,heures:rec.heures,note:rec.note||""})}>Modifier</button></div>
-                :<button style={S.btnPrimary} onClick={()=>setEditingHours({date:s.date,heures:"",note:""})}>+ Saisir</button>}
+          <div style={S.pageHeader}>
+            <h2 style={S.pageTitle}>Mes heures</h2>
+            <div style={{...S.badge,background:"#e8f5e9",fontSize:13,padding:"5px 12px"}}>Total : <strong>{totalWorked.toFixed(1)}h</strong></div>
+          </div>
+          <p style={{color:"#888",fontSize:12,marginBottom:12}}>Visible uniquement par vous.</p>
+
+          {/* Sélecteur de mois + réinitialiser */}
+          {(()=>{
+            const now=new Date();
+            const months=[];
+            for(let i=0;i<12;i++){
+              const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+              months.push({y:d.getFullYear(),m:d.getMonth(),label:`${MOIS[d.getMonth()]} ${d.getFullYear()}`});
+            }
+            const selKey=`${selectedMonth.y}-${String(selectedMonth.m+1).padStart(2,"0")}`;
+            const monthHours=workedHours.filter(w=>w.date.startsWith(selKey));
+            const monthTotal=monthHours.reduce((s,w)=>s+(parseFloat(w.heures)||0),0);
+            const monthShifts=shifts.filter(s=>s.date.startsWith(selKey)&&s.date<=getTodayPlus(0)).sort((a,b)=>b.date.localeCompare(a.date));
+            return (<>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                <select style={{...S.input,flex:1,minWidth:160}} value={`${selectedMonth.y}-${selectedMonth.m}`} onChange={e=>{const[y,m]=e.target.value.split("-");setSelectedMonth({y:parseInt(y),m:parseInt(m)});}}>
+                  {months.map(mo=><option key={`${mo.y}-${mo.m}`} value={`${mo.y}-${mo.m}`}>{mo.label}</option>)}
+                </select>
+                <span style={{...S.badge,background:"#e3f2fd",fontSize:12,padding:"5px 10px",flexShrink:0}}>{monthTotal.toFixed(1)}h ce mois</span>
+                {monthHours.length>0&&<button style={{background:"#fce4ec",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#c62828",flexShrink:0}} onClick={async()=>{if(!window.confirm(`Réinitialiser les heures de ${MOIS[selectedMonth.m]} ${selectedMonth.y} ?`))return;setSaving(true);for(const w of monthHours){await onResetHours(w.id);}setSaving(false);}}>🗑️ Réinitialiser</button>}
               </div>
-            );})}
+              {monthShifts.length===0?<div style={S.emptyBox}>Aucun service ce mois.</div>
+                :monthShifts.map(s=>{
+                  const rec=workedHours.find(w=>w.date===s.date);
+                  return (
+                    <div key={s.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 6px rgba(0,0,0,.07)",display:"flex",alignItems:"center",gap:12}}>
+                      <span style={{fontSize:22}}>{posteEmoji(s.poste)}</span>
+                      <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{formatFullDate(s.date)}</div><div style={{fontSize:11,color:"#888"}}>{s.debut}{s.fin?`–${s.fin}`:""} · {s.poste}</div>{rec?.note&&<div style={{fontSize:11,color:"#666",fontStyle:"italic"}}>"{rec.note}"</div>}</div>
+                      {rec?<div style={{textAlign:"right"}}><div style={{fontWeight:800,fontSize:17,color:"#1a237e"}}>{rec.heures}h</div><button style={{fontSize:10,color:"#1976d2",background:"none",border:"none",cursor:"pointer"}} onClick={()=>setEditingHours({date:s.date,heures:rec.heures,note:rec.note||""})}>Modifier</button></div>
+                      :<button style={S.btnPrimary} onClick={()=>setEditingHours({date:s.date,heures:"",note:""})}>+ Saisir</button>}
+                    </div>
+                  );
+                })
+              }
+            </>);
+          })()}
+
           {editingHours&&<Modal title={`Heures du ${formatFullDate(editingHours.date)}`} onClose={()=>setEditingHours(null)}>
             <label style={S.label}>Heures travaillées</label>
             <input style={S.input} type="number" step="0.5" min="0" max="24" placeholder="ex : 7.5" value={editingHours.heures} onChange={e=>setEditingHours(p=>({...p,heures:e.target.value}))}/>
