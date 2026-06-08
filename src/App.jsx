@@ -72,6 +72,11 @@ export default function App() {
   const updateUnavailStatus=async(id,status)=>{ await updateDoc(doc(db,"unavailability",id),{status}); };
   const saveWorkedHours=async(empId,date,heures,note)=>{ const id=`${empId}_${date}`; await setDoc(doc(db,"workedHours",id),{empId,date,heures,note}); };
 
+  const [messages]=useCollection("messages");
+  const sendMessage=async(text,fromId,fromName)=>{ const id=genId(); await setDoc(doc(db,"messages",id),{id,text,fromId,fromName,createdAt:Date.now(),readBy:[fromId]}); };
+  const markRead=async(msgId,userId)=>{ const msg=messages.find(m=>m.id===msgId); if(!msg||msg.readBy?.includes(userId))return; await updateDoc(doc(db,"messages",msgId),{readBy:[...(msg.readBy||[]),userId]}); };
+  const deleteMessage=async(id)=>{ await deleteDoc(doc(db,"messages",id)); };
+
   if(loading) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1a237e,#006064)",flexDirection:"column",gap:16}}>
       <span style={{fontSize:48}}>🍽</span>
@@ -80,10 +85,11 @@ export default function App() {
     </div>
   );
   if(view==="login") return <LoginPage employees={employees} managerPwd={managerPwd} onLogin={(r,u)=>{setView(r);setCurrentUser(u);}}/>;
-  if(view==="manager") return <ManagerView employees={employees} shifts={shifts} notifications={notifs} unavailability={unavailability} workedHoursCol={workedHoursCol} managerPwd={managerPwd} onAddEmployee={addEmployee} onUpdateEmployee={updateEmployee} onRemoveEmployee={removeEmployee} onAddShift={addShift} onRemoveShift={removeShift} onSetManagerPwd={setManagerPwd} onUpdateUnavailStatus={updateUnavailStatus} onLogout={logout}/>;
+  if(view==="manager") return <ManagerView employees={employees} shifts={shifts} notifications={notifs} unavailability={unavailability} workedHoursCol={workedHoursCol} managerPwd={managerPwd} messages={messages} onSendMessage={(t)=>sendMessage(t,"manager","Manager")} onMarkRead={(id)=>markRead(id,"manager")} onDeleteMessage={deleteMessage} onAddEmployee={addEmployee} onUpdateEmployee={updateEmployee} onRemoveEmployee={removeEmployee} onAddShift={addShift} onRemoveShift={removeShift} onSetManagerPwd={setManagerPwd} onUpdateUnavailStatus={updateUnavailStatus} onLogout={logout}/>;
   if(view==="employee") {
     const empShifts=shifts.filter(s=>s.employeeId===currentUser.id);
-    return <EmployeeView employee={currentUser} shifts={empShifts} allShifts={shifts} employees={employees} notifications={notifs.filter(s=>s.employeeId===currentUser.id)} unavailability={unavailability.filter(u=>u.empId===currentUser.id)} workedHours={workedHoursCol.filter(w=>w.empId===currentUser.id)} onAddUnavail={u=>addUnavail(currentUser.id,u)} onRemoveUnavail={removeUnavail} onSaveWorkedHours={(d,h,n)=>saveWorkedHours(currentUser.id,d,h,n)} onLogout={logout}/>;
+    const unread=messages.filter(m=>!m.readBy?.includes(currentUser.id)).length;
+    return <EmployeeView employee={currentUser} shifts={empShifts} allShifts={shifts} employees={employees} notifications={notifs.filter(s=>s.employeeId===currentUser.id)} unavailability={unavailability.filter(u=>u.empId===currentUser.id)} workedHours={workedHoursCol.filter(w=>w.empId===currentUser.id)} messages={messages} unreadCount={unread} onSendMessage={(t)=>sendMessage(t,currentUser.id,`${currentUser.prenom} ${currentUser.nom}`)} onMarkRead={(id)=>markRead(id,currentUser.id)} onAddUnavail={u=>addUnavail(currentUser.id,u)} onRemoveUnavail={removeUnavail} onSaveWorkedHours={(d,h,n)=>saveWorkedHours(currentUser.id,d,h,n)} onLogout={logout}/>;
   }
 }
 
@@ -134,13 +140,54 @@ function LoginPage({employees,managerPwd,onLogin}) {
   );
 }
 
-// ── Calendar Planning ────────────────────────────────────────────────
+// ── Jours fériés France & Belgique ───────────────────────────────────
+function getHolidays(year) {
+  // Calcul de Pâques (algorithme de Butcher)
+  const a=year%19, b=Math.floor(year/100), c=year%100;
+  const d=Math.floor(b/4), e=b%4, f=Math.floor((b+8)/25);
+  const g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30;
+  const i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7;
+  const m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31)-1;
+  const day=(h+l-7*m+114)%31+1;
+  const easter=new Date(year,month,day);
+  const addDays=(d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return toDateStr(x); };
+  const fmt=(m,d)=>`${year}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
+  const fr = {
+    [fmt(1,1)]:   "🎉 Jour de l'An",
+    [addDays(easter,1)]: "✝️ Lundi de Pâques",
+    [fmt(5,1)]:   "🛠 Fête du Travail",
+    [fmt(5,8)]:   "🕊 Victoire 1945",
+    [addDays(easter,39)]: "✝️ Ascension",
+    [addDays(easter,50)]: "✝️ Lundi de Pentecôte",
+    [fmt(7,14)]:  "🇫🇷 Fête Nationale",
+    [fmt(8,15)]:  "🙏 Assomption",
+    [fmt(11,1)]:  "🕯 Toussaint",
+    [fmt(11,11)]: "🕊 Armistice",
+    [fmt(12,25)]: "🎄 Noël",
+  };
+  const be = {
+    [fmt(1,1)]:   "🎉 Jour de l'An",
+    [addDays(easter,1)]: "✝️ Lundi de Pâques",
+    [fmt(5,1)]:   "🛠 Fête du Travail",
+    [addDays(easter,39)]: "✝️ Ascension",
+    [addDays(easter,50)]: "✝️ Lundi de Pentecôte",
+    [fmt(7,21)]:  "🇧🇪 Fête Nationale",
+    [fmt(8,15)]:  "🙏 Assomption",
+    [fmt(11,1)]:  "🕯 Toussaint",
+    [fmt(11,11)]: "🕊 Armistice",
+    [fmt(12,25)]: "🎄 Noël",
+  };
+  return { fr, be };
+}
 function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,myId,unavailability=[]}) {
   const today=new Date();
   const [viewMode,setViewMode]=useState("month");
   const [anchor,setAnchor]=useState(()=>{ const t=new Date(); return new Date(t.getFullYear(),t.getMonth(),1); });
   const [selectedDate,setSelectedDate]=useState(null);
-  const [addModal,setAddModal]=useState(null); // date string
+  const [holidayModal,setHolidayModal]=useState(null);
+  const [addModal,setAddModal]=useState(null);
   const [newShift,setNewShift]=useState({employeeId:"",debut:"09:00",fin:"",poste:"Salle"});
   const [saving,setSaving]=useState(false);
 
@@ -180,6 +227,15 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
   const days=getDays();
   const todayStr=toDateStr(today);
 
+  // Jours fériés pour les années visibles
+  const holidays = {};
+  [-1,0,1].forEach(offset=>{
+    const y=anchor.getFullYear()+offset;
+    const h=getHolidays(y);
+    Object.assign(holidays, Object.fromEntries(Object.entries(h.fr).map(([k,v])=>[k,{fr:v,be:h.be[k]}])));
+    Object.entries(h.be).forEach(([k,v])=>{ if(!holidays[k]) holidays[k]={fr:null,be:v}; else holidays[k].be=v; });
+  });
+
   const navigate=(dir)=>{
     const a=new Date(anchor);
     if(viewMode==="month"){
@@ -202,6 +258,8 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
 
   const handleDayClick=(dateStr)=>{
     if(!dateStr) return;
+    const holiday=holidays[dateStr];
+    if(holiday){ setHolidayModal({dateStr,holiday}); return; }
     if(isManager){
       const emp=employees[0];
       setNewShift({employeeId:emp?.id||"",debut:"09:00",fin:"",poste:emp?.poste||"Salle"});
@@ -292,17 +350,19 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
           const isToday=dateStr===todayStr;
           const isSel=selectedDate===dateStr;
           const [,, dd]=dateStr.split("-");
+          const holiday=holidays[dateStr];
           return (
-            <div key={dateStr} onClick={()=>handleDayClick(dateStr)} style={{minHeight:56,borderRadius:10,padding:"4px 3px",cursor:"pointer",background:isSel?"#e8eaf6":isToday?"#e3f2fd":"#fff",border:isToday?"2px solid #1a237e":isSel?"2px solid #5c6bc0":"1px solid #eee",transition:"background .15s"}}>
-              <div style={{textAlign:"center",fontWeight:isToday?900:500,fontSize:13,color:isToday?"#1a237e":"#333",marginBottom:2,background:isToday?"#1a237e":"transparent",borderRadius:"50%",width:22,height:22,lineHeight:"22px",margin:"0 auto 2px",color:isToday?"#fff":"#333"}}>{dd}</div>
-              {dayShifts.slice(0,3).map(s=>(
+            <div key={dateStr} onClick={()=>handleDayClick(dateStr)} style={{minHeight:56,borderRadius:10,padding:"4px 3px",cursor:"pointer",background:holiday?"#fff8e1":isSel?"#e8eaf6":isToday?"#e3f2fd":"#fff",border:isToday?"2px solid #1a237e":isSel?"2px solid #5c6bc0":holiday?"1.5px solid #ffca28":"1px solid #eee",transition:"background .15s",position:"relative"}}>
+              <div style={{textAlign:"center",fontWeight:isToday?900:500,fontSize:13,marginBottom:2,background:isToday?"#1a237e":"transparent",borderRadius:"50%",width:22,height:22,lineHeight:"22px",margin:"0 auto 2px",color:isToday?"#fff":holiday?"#f57f17":"#333"}}>{dd}</div>
+              {holiday&&<div style={{fontSize:7,textAlign:"center",color:"#f57f17",lineHeight:1,marginBottom:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>🎌</div>}
+              {dayShifts.slice(0,2).map(s=>(
                 <div key={s.id} style={{display:"flex",alignItems:"center",gap:2,marginBottom:1}}>
                   <div style={{width:6,height:6,borderRadius:"50%",background:isUnavailableOn(s.employeeId,dateStr)?"#ccc":posteDot(s.poste),flexShrink:0}}/>
                   <div style={{fontSize:9,color:isUnavailableOn(s.employeeId,dateStr)?"#bbb":"#444",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",fontWeight:myId&&s.employeeId===myId?700:400,textDecoration:isUnavailableOn(s.employeeId,dateStr)?"line-through":"none"}}>{empName(s.employeeId)}</div>
                 </div>
               ))}
-              {dayShifts.length>3&&<div style={{fontSize:8,color:"#aaa",textAlign:"center"}}>+{dayShifts.length-3}</div>}
-              {isManager&&<div style={{fontSize:10,color:"#bbb",textAlign:"center",marginTop:2}}>+</div>}
+              {dayShifts.length>2&&<div style={{fontSize:8,color:"#aaa",textAlign:"center"}}>+{dayShifts.length-2}</div>}
+              {isManager&&!holiday&&<div style={{fontSize:10,color:"#bbb",textAlign:"center",marginTop:2}}>+</div>}
             </div>
           );
         })}
@@ -350,7 +410,34 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
         );
       })()}
 
-      {/* Modal ajout service (manager) */}
+      {/* Modal jour férié */}
+      {holidayModal&&(
+        <Modal title={`🎌 ${formatFullDate(holidayModal.dateStr)}`} onClose={()=>setHolidayModal(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {holidayModal.holiday.fr&&(
+              <div style={{background:"#e8f0fe",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:28}}>🇫🇷</span>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1a237e"}}>France</div>
+                  <div style={{fontSize:14,color:"#333",marginTop:2}}>{holidayModal.holiday.fr}</div>
+                </div>
+              </div>
+            )}
+            {holidayModal.holiday.be&&(
+              <div style={{background:"#fff8e1",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:28}}>🇧🇪</span>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#e65100"}}>Belgique</div>
+                  <div style={{fontSize:14,color:"#333",marginTop:2}}>{holidayModal.holiday.be}</div>
+                </div>
+              </div>
+            )}
+            {!holidayModal.holiday.fr&&!holidayModal.holiday.be&&(
+              <div style={{textAlign:"center",color:"#888",padding:"12px 0"}}>Aucune info disponible</div>
+            )}
+          </div>
+        </Modal>
+      )}
       {addModal&&isManager&&(
         <Modal title={`Service du ${formatFullDate(addModal)}`} onClose={()=>setAddModal(null)}>
           <label style={S.label}>Employé</label>
@@ -389,7 +476,7 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
 }
 
 // ── Manager View ──────────────────────────────────────────────────────
-function ManagerView({employees,shifts,notifications,unavailability,workedHoursCol,managerPwd,onAddEmployee,onUpdateEmployee,onRemoveEmployee,onAddShift,onRemoveShift,onSetManagerPwd,onUpdateUnavailStatus,onLogout}) {
+function ManagerView({employees,shifts,notifications,unavailability,workedHoursCol,managerPwd,messages,onSendMessage,onMarkRead,onDeleteMessage,onAddEmployee,onUpdateEmployee,onRemoveEmployee,onAddShift,onRemoveShift,onSetManagerPwd,onUpdateUnavailStatus,onLogout}) {
   const [tab,setTab]=useState("planning");
   const [menuOpen,setMenuOpen]=useState(false);
   const [showAddEmp,setShowAddEmp]=useState(false);
@@ -402,11 +489,13 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
   const [indispoDebut,setIndispoDebut]=useState("");
   const [indispoFin,setIndispoFin]=useState("");
 
+  const unreadManager=messages.filter(m=>!m.readBy?.includes("manager")).length;
   const navItems=[
     {id:"planning",icon:"📅",label:"Planning"},
     {id:"employees",icon:"👥",label:"Équipe"},
     {id:"overview",icon:"📊",label:"Vue d'ensemble"},
     {id:"notifs",icon:"🔔",label:`Alertes (${notifications.length})`},
+    {id:"messages",icon:"💬",label:`Messages${unreadManager>0?` (${unreadManager})`:""}`},
     {id:"settings",icon:"⚙️",label:"Paramètres"},
   ];
 
@@ -428,6 +517,7 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
             <button key={item.id} title={item.label} style={{...S.topNavBtn,...(tab===item.id?S.topNavBtnActive:{})}} onClick={()=>setTab(item.id)}>
               {item.icon}
               {item.id==="notifs"&&notifications.length>0&&<span style={S.notifDot}>{notifications.length}</span>}
+              {item.id==="messages"&&unreadManager>0&&<span style={S.notifDot}>{unreadManager}</span>}
             </button>
           ))}
         </div>
@@ -573,6 +663,11 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
             );})}
         </>)}
 
+        {/* MESSAGES */}
+        {tab==="messages"&&(
+          <Messagerie messages={messages} currentId="manager" currentName="Manager" onSend={onSendMessage} onMarkRead={onMarkRead} onDelete={onDeleteMessage} isManager={true}/>
+        )}
+
         {/* PARAMÈTRES */}
         {tab==="settings"&&(<>
           <div style={S.pageHeader}><h2 style={S.pageTitle}>Paramètres</h2></div>
@@ -596,7 +691,7 @@ function ManagerView({employees,shifts,notifications,unavailability,workedHoursC
 }
 
 // ── Employee View ─────────────────────────────────────────────────────
-function EmployeeView({employee,shifts,allShifts,employees,notifications,unavailability,workedHours,onAddUnavail,onRemoveUnavail,onSaveWorkedHours,onLogout}) {
+function EmployeeView({employee,shifts,allShifts,employees,notifications,unavailability,workedHours,messages,unreadCount,onSendMessage,onMarkRead,onAddUnavail,onRemoveUnavail,onSaveWorkedHours,onLogout}) {
   const [tab,setTab]=useState("planning");
   const [menuOpen,setMenuOpen]=useState(false);
   const [editingHours,setEditingHours]=useState(null);
@@ -607,6 +702,7 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
     {id:"planning",icon:"📅",label:"Mon planning"},
     {id:"heures",icon:"⏱️",label:"Mes heures"},
     {id:"indispo",icon:"🚫",label:"Indisponibilités"},
+    {id:"messages",icon:"💬",label:`Messages${unreadCount>0?` (${unreadCount})`:""}`},
   ];
 
   const handleSaveHours=async()=>{ if(!editingHours)return; setSaving(true); await onSaveWorkedHours(editingHours.date,editingHours.heures,editingHours.note); setEditingHours(null); setSaving(false); };
@@ -703,7 +799,88 @@ function EmployeeView({employee,shifts,allShifts,employees,notifications,unavail
             setSaving={setSaving}
           />
         )}
+
+        {/* MESSAGES */}
+        {tab==="messages"&&(
+          <Messagerie messages={messages} currentId={employee.id} currentName={`${employee.prenom} ${employee.nom}`} onSend={onSendMessage} onMarkRead={onMarkRead} isManager={false}/>
+        )}
       </main>
+    </div>
+  );
+}
+
+// ── Messagerie ────────────────────────────────────────────────────────
+function Messagerie({messages,currentId,currentName,onSend,onMarkRead,onDelete,isManager}) {
+  const [text,setText]=useState("");
+  const [sending,setSending]=useState(false);
+
+  // Marquer les messages non lus comme lus à l'ouverture
+  useEffect(()=>{
+    messages.forEach(m=>{ if(!m.readBy?.includes(currentId)) onMarkRead(m.id); });
+  },[messages.length]);
+
+  const sorted=[...messages].sort((a,b)=>a.createdAt-b.createdAt);
+
+  const handleSend=async()=>{
+    if(!text.trim()) return;
+    setSending(true);
+    await onSend(text.trim());
+    setText(""); setSending(false);
+  };
+
+  const formatTime=(ts)=>{
+    const d=new Date(ts);
+    const today=new Date();
+    const isToday=d.toDateString()===today.toDateString();
+    if(isToday) return d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+    return d.toLocaleDateString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)"}}>
+      <h2 style={{...S.pageTitle,marginBottom:12}}>💬 Messagerie équipe</h2>
+      <p style={{fontSize:12,color:"#888",marginBottom:12}}>Canal commun visible par tous.</p>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,paddingBottom:8}}>
+        {sorted.length===0&&<div style={S.emptyBox}>Aucun message pour l'instant.</div>}
+        {sorted.map(msg=>{
+          const isMe=msg.fromId===currentId;
+          return (
+            <div key={msg.id} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start"}}>
+              <div style={{maxWidth:"80%"}}>
+                <div style={{fontSize:10,color:"#aaa",marginBottom:2,textAlign:isMe?"right":"left"}}>
+                  {msg.fromName} · {formatTime(msg.createdAt)}
+                </div>
+                <div style={{display:"flex",alignItems:"flex-end",gap:6,flexDirection:isMe?"row-reverse":"row"}}>
+                  <div style={{background:isMe?"#1a237e":"#fff",color:isMe?"#fff":"#222",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,boxShadow:"0 1px 6px rgba(0,0,0,.1)",maxWidth:"100%",wordBreak:"break-word"}}>
+                    {msg.text}
+                  </div>
+                  {isManager&&onDelete&&(
+                    <button onClick={()=>onDelete(msg.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#ccc",padding:0,flexShrink:0}}>🗑️</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Saisie */}
+      <div style={{display:"flex",gap:8,paddingTop:10,borderTop:"1px solid #eee",background:"#f8f9fb"}}>
+        <input
+          style={{...S.input,flex:1,borderRadius:24,padding:"10px 16px"}}
+          placeholder="Écrire un message…"
+          value={text}
+          onChange={e=>setText(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&!sending&&handleSend()}
+        />
+        <button
+          style={{...S.btnPrimary,borderRadius:"50%",width:44,height:44,padding:0,fontSize:18,flexShrink:0,opacity:sending||!text.trim()?.5:1}}
+          onClick={handleSend}
+          disabled={sending||!text.trim()}
+        >➤</button>
+      </div>
     </div>
   );
 }
@@ -801,6 +978,9 @@ function IndispoCalendar({unavailability,shifts,onAddUnavail,onRemoveUnavail,sav
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
         {days.map((dateStr,i)=>{
           if(!dateStr) return <div key={i} style={{minHeight:48}}/>;
+          // Filtrer strictement les jours du mois affiché
+          const [dy,dm]=dateStr.split("-");
+          if(dy!==String(y)||dm!==String(m+1).padStart(2,"0")) return <div key={i} style={{minHeight:48}}/>;
           const isPast = dateStr < todayStr;
           const isToday = dateStr === todayStr;
           const unavail = getUnavailForDay(dateStr);
