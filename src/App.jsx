@@ -14,7 +14,12 @@ const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function toDateStr(d) { return d.toISOString().split("T")[0]; }
+function toDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${dd}`;
+}
 function getTodayPlus(n) { const d=new Date(); d.setDate(d.getDate()+n); return toDateStr(d); }
 function formatDate(s) { const [,m,d]=s.split("-"); return `${d}/${m}`; }
 function formatFullDate(s) { return new Date(s+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}); }
@@ -712,11 +717,15 @@ function IndispoCalendar({unavailability,shifts,onAddUnavail,onRemoveUnavail,sav
   const todayStr = toDateStr(today);
 
   const y=anchor.getFullYear(), m=anchor.getMonth();
-  const firstDow=(new Date(y,m,1).getDay()+6)%7;
+  const first=new Date(y,m,1);
+  const firstDow=(first.getDay()+6)%7;
   const daysInMonth=new Date(y,m+1,0).getDate();
   const days=[];
   for(let i=0;i<firstDow;i++) days.push(null);
-  for(let i=1;i<=daysInMonth;i++) days.push(toDateStr(new Date(y,m,i)));
+  for(let i=1;i<=daysInMonth;i++){
+    const d=new Date(y,m,i);
+    if(d.getMonth()===m) days.push(toDateStr(d));
+  }
   while(days.length%7!==0) days.push(null);
 
   const getUnavailForDay = (dateStr) =>
