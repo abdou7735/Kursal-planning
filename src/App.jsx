@@ -275,7 +275,14 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
       {/* Grille */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
         {days.map((dateStr,i)=>{
+          // Ignorer absolument toute date hors du mois courant
           if(!dateStr) return <div key={i} style={{minHeight:56}}/>;
+          if(viewMode==="month"){
+            const [dy,dm]=dateStr.split("-");
+            const anchorM=String(anchor.getMonth()+1).padStart(2,"0");
+            const anchorY=String(anchor.getFullYear());
+            if(dy!==anchorY||dm!==anchorM) return <div key={i} style={{minHeight:56}}/>;
+          }
           const dayShifts=shifts.filter(s=>s.date===dateStr);
           const isToday=dateStr===todayStr;
           const isSel=selectedDate===dateStr;
