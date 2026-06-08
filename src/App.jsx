@@ -439,6 +439,19 @@ function CalendarPlanning({shifts,employees,onAddShift,onRemoveShift,isManager,m
       )}
       {addModal&&isManager&&(
         <Modal title={`Service du ${formatFullDate(addModal)}`} onClose={()=>setAddModal(null)}>
+          {/* Bandeau jour férié */}
+          {(()=>{
+            const h=holidays[addModal];
+            if(!h) return null;
+            const parts=[];
+            if(h.fr) parts.push(`🇫🇷 ${h.fr}`);
+            if(h.be) parts.push(`🇧🇪 ${h.be}`);
+            return parts.length>0?(
+              <div style={{background:"#ede7f6",borderRadius:8,padding:"7px 12px",marginBottom:2,fontSize:12,color:"#6a1b9a",fontWeight:600,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                🗓 {parts.join(" · ")}
+              </div>
+            ):null;
+          })()}
           <label style={S.label}>Employé</label>
           <select style={S.input} value={newShift.employeeId} onChange={e=>{ const emp=employees.find(x=>x.id===e.target.value); setNewShift(p=>({...p,employeeId:e.target.value,poste:emp?.poste||"Salle"})); }}>
             <option value="">-- Choisir --</option>
